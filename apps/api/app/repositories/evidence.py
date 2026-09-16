@@ -1,5 +1,5 @@
 """Evidence repository."""
-# type: ignore
+# mypy: ignore-errors
 
 from typing import List, Optional
 

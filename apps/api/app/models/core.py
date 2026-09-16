@@ -1,5 +1,5 @@
 """Core EPIRO models."""
-# type: ignore
+# mypy: ignore-errors
 
 import uuid
 from enum import Enum

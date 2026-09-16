@@ -1,5 +1,5 @@
 """User repository."""
-# type: ignore
+# mypy: ignore-errors
 
 from typing import Optional
 

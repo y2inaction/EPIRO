@@ -1,5 +1,5 @@
 """Authentication endpoints."""
-# type: ignore
+# mypy: ignore-errors
 
 from datetime import timedelta
 
