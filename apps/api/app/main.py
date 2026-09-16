@@ -84,6 +84,10 @@ app.include_router(evidence.router, prefix="/api/v1/evidence", tags=["Evidence"]
 app.include_router(stories.router, prefix="/api/v1/stories", tags=["Stories"])
 app.include_router(questions.router, prefix="/api/v1/questions", tags=["Questions"])
 
+# Import search after other imports to avoid circular dependencies
+from app.api import search
+app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])
+
 
 # Root endpoint
 @app.get("/")

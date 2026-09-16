@@ -1,34 +1,153 @@
 """User management endpoints."""
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status, Depends, Query
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models import User
+from app.repositories.user import UserRepository
+from app.schemas.auth import (
+    UserUpdate,
+    UserResponse,
+)
+from app.dependencies import get_current_user, get_current_admin_user
 
 router = APIRouter()
 
 
-@router.get("/")
-async def list_users():
-    """List all users."""
-    return {"users": []}
+@router.get("/me", response_model=UserResponse)
+async def get_current_user_profile(
+    current_user: User = Depends(get_current_user),
+):
+    """Get current user profile."""
+    return current_user
 
 
-@router.get("/{user_id}")
-async def get_user(user_id: str):
+@router.put("/me", response_model=UserResponse)
+async def update_current_user_profile(
+    user_update: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update current user profile."""
+    user_repo = UserRepository(db)
+    update_data = user_update.model_dump(exclude_unset=True)
+
+    updated_user = user_repo.update(current_user.id, update_data)
+    if not updated_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    return updated_user
+
+
+@router.get("/", response_model=dict)
+async def list_users(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    search: str = Query(None),
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """List all users (admin only)."""
+    user_repo = UserRepository(db)
+
+    if search:
+        users, total = user_repo.search_users(search, skip, limit)
+    else:
+        users, total = user_repo.get_all(skip, limit)
+
+    return {
+        "total": total,
+        "page": skip // limit + 1,
+        "page_size": limit,
+        "total_pages": (total + limit - 1) // limit,
+        "data": [UserResponse.model_validate(user) for user in users],
+    }
+
+
+@router.get("/{user_id}", response_model=UserResponse)
+async def get_user(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get user by ID."""
-    return {"user_id": user_id}
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    return user
 
 
-@router.post("/")
-async def create_user():
-    """Create a new user."""
-    return {"message": "User created"}
+@router.put("/{user_id}", response_model=UserResponse)
+async def update_user(
+    user_id: str,
+    user_update: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update user (self or admin)."""
+    # Users can only update their own profile unless they're admin
+    user_repo = UserRepository(db)
+
+    if str(current_user.id) != user_id and not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot update other users",
+        )
+
+    user = user_repo.get_by_id(user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    update_data = user_update.model_dump(exclude_unset=True)
+    updated_user = user_repo.update(user_id, update_data)
+
+    return updated_user
 
 
-@router.put("/{user_id}")
-async def update_user(user_id: str):
-    """Update user."""
-    return {"user_id": user_id, "message": "User updated"}
+@router.post("/{user_id}/deactivate")
+async def deactivate_user(
+    user_id: str,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Deactivate a user (admin only)."""
+    user_repo = UserRepository(db)
+    user = user_repo.deactivate_user(user_id)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    return {"message": "User deactivated successfully"}
 
 
-@router.delete("/{user_id}")
-async def delete_user(user_id: str):
-    """Delete user."""
-    return {"user_id": user_id, "message": "User deleted"}
+@router.post("/{user_id}/activate")
+async def activate_user(
+    user_id: str,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Activate a user (admin only)."""
+    user_repo = UserRepository(db)
+    user = user_repo.activate_user(user_id)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    return {"message": "User activated successfully"}

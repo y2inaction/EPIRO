@@ -1,34 +1,116 @@
 """Organisation management endpoints."""
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status, Depends, Query
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models import User, Organisation
+from app.repositories.base import BaseRepository
+from app.schemas.core import (
+    OrganisationCreate,
+    OrganisationResponse,
+)
+from app.dependencies import get_current_user, get_current_admin_user
 
 router = APIRouter()
 
 
-@router.get("/")
-async def list_organisations():
+@router.get("/", response_model=dict)
+async def list_organisations(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """List all organisations."""
-    return {"organisations": []}
+    org_repo = BaseRepository(db, Organisation)
+    orgs, total = org_repo.get_all(skip, limit)
+
+    return {
+        "total": total,
+        "page": skip // limit + 1,
+        "page_size": limit,
+        "total_pages": (total + limit - 1) // limit,
+        "data": [OrganisationResponse.model_validate(org) for org in orgs],
+    }
 
 
-@router.get("/{organisation_id}")
-async def get_organisation(organisation_id: str):
+@router.get("/{organisation_id}", response_model=OrganisationResponse)
+async def get_organisation(
+    organisation_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get organisation by ID."""
-    return {"organisation_id": organisation_id}
+    org_repo = BaseRepository(db, Organisation)
+    org = org_repo.get_by_id(organisation_id)
+
+    if not org:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organisation not found",
+        )
+
+    return org
 
 
-@router.post("/")
-async def create_organisation():
+@router.post("/", response_model=OrganisationResponse)
+async def create_organisation(
+    org_create: OrganisationCreate,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
     """Create a new organisation."""
-    return {"message": "Organisation created"}
+    org_repo = BaseRepository(db, Organisation)
+
+    # Check if organisation code already exists
+    if org_repo.exists(code=org_create.code):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Organisation code already exists",
+        )
+
+    org_data = org_create.model_dump()
+    org_data["created_by"] = current_user.id
+
+    org = org_repo.create(org_data)
+    return org
 
 
-@router.put("/{organisation_id}")
-async def update_organisation(organisation_id: str):
+@router.put("/{organisation_id}", response_model=OrganisationResponse)
+async def update_organisation(
+    organisation_id: str,
+    org_update: dict,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
     """Update organisation."""
-    return {"organisation_id": organisation_id, "message": "Organisation updated"}
+    org_repo = BaseRepository(db, Organisation)
+    org = org_repo.get_by_id(organisation_id)
+
+    if not org:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organisation not found",
+        )
+
+    org_update["updated_by"] = current_user.id
+    updated_org = org_repo.update(organisation_id, org_update)
+
+    return updated_org
 
 
 @router.delete("/{organisation_id}")
-async def delete_organisation(organisation_id: str):
+async def delete_organisation(
+    organisation_id: str,
+    current_user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
     """Delete organisation."""
-    return {"organisation_id": organisation_id, "message": "Organisation deleted"}
+    org_repo = BaseRepository(db, Organisation)
+
+    if not org_repo.delete(organisation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organisation not found",
+        )
+
+    return {"message": "Organisation deleted successfully"}
