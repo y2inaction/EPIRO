@@ -1,9 +1,8 @@
 """Global search endpoints."""
 
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
-
-from fastapi import APIRouter, Depends, Query
 
 from app.database import get_db
 from app.dependencies import get_current_user

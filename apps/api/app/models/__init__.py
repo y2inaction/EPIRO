@@ -2,24 +2,24 @@
 
 from .base import Base, TimestampedModel
 from .core import (
-    User,
-    Organisation,
-    Role,
-    ThematicArea,
-    Programme,
-    Project,
-    Location,
-    Source,
+    AuditLog,
     Evidence,
     EvidenceStatus,
-    Story,
-    Question,
-    QuestionStatus,
     IntegritySignal,
     IntegritySignalPriority,
-    Scenario,
+    Location,
+    Organisation,
+    Programme,
+    Project,
+    Question,
+    QuestionStatus,
     ReadinessStatus,
-    AuditLog,
+    Role,
+    Scenario,
+    Source,
+    Story,
+    ThematicArea,
+    User,
 )
 
 __all__ = [

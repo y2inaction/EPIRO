@@ -1,8 +1,10 @@
 """User repository."""
 
 from typing import Optional
-from sqlalchemy.orm import Session
+
 from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
 from app.models import User
 from app.repositories.base import BaseRepository
 

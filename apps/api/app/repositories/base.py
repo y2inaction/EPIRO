@@ -1,9 +1,11 @@
 """Base repository class for common CRUD operations."""
 
-from typing import TypeVar, Generic, Type, Optional, List, Any
+from typing import Any, Generic, List, Optional, Type, TypeVar
 from uuid import UUID
-from sqlalchemy.orm import Session
+
 from sqlalchemy import desc
+from sqlalchemy.orm import Session
+
 from app.models.base import TimestampedModel
 
 T = TypeVar("T", bound=TimestampedModel)

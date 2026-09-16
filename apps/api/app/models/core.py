@@ -2,22 +2,18 @@
 
 import uuid
 from enum import Enum
-from sqlalchemy import (
-    Column,
-    String,
-    Text,
-    Integer,
-    Boolean,
-    ForeignKey,
-    Table,
-    Enum as SQLEnum,
-    Index,
-    UniqueConstraint,
-    CheckConstraint,
-)
-from sqlalchemy.dialects.postgresql import UUID, JSON, ARRAY
-from sqlalchemy.orm import relationship
+
 from geoalchemy2 import Geometry
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+)
+from sqlalchemy import Enum as SQLEnum
+from sqlalchemy import ForeignKey, Index, Integer, String, Table, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
+from sqlalchemy.orm import relationship
+
 from .base import TimestampedModel
 
 

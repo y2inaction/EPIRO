@@ -2,11 +2,13 @@
 
 import uuid
 from datetime import datetime
+from typing import Any
+
 from sqlalchemy import Column, DateTime, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
 
-Base = declarative_base()
+Base: Any = declarative_base()
 
 
 class TimestampedModel(Base):

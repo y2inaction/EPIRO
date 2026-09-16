@@ -1,9 +1,11 @@
 """Dependency injection utilities."""
 
 from typing import Optional
+
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPAuthCredentials, HTTPBearer
 from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app.models import User
 from app.security import decode_token

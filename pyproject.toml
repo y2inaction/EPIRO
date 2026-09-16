@@ -15,3 +15,16 @@ warn_unused_configs = true
 ignore_missing_imports = true
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
+no_error_summary = false
+
+[[tool.mypy.overrides]]
+module = "app.models.*"
+ignore_errors = false
+check_untyped_defs = false
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+[[tool.mypy.overrides]]
+module = "app.repositories.*"
+ignore_errors = false
+disallow_untyped_defs = false

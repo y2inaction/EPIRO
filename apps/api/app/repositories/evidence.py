@@ -1,8 +1,10 @@
 """Evidence repository."""
 
-from typing import Optional, List
+from typing import List, Optional
+
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_
+
 from app.models import Evidence, EvidenceStatus
 from app.repositories.base import BaseRepository
 

@@ -1,6 +1,7 @@
 """Celery tasks for background jobs."""
 
 from celery import Celery
+
 from app.config import settings
 
 app = Celery(
