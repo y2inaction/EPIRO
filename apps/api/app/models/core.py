@@ -115,7 +115,7 @@ class Organisation(TimestampedModel):
     logo_url = Column(String(500))
     website = Column(String(500))
     is_active = Column(Boolean, default=True)
-    metadata = Column(JSON, default={})
+    metadata_json = Column(JSON, default={})
 
     # Relationships
     users = relationship("User", secondary=user_organisation, back_populates="organisations")
@@ -207,7 +207,7 @@ class Programme(TimestampedModel):
     end_date = Column(String)
     budget = Column(Integer)
     status = Column(String(50), default="active")
-    metadata = Column(JSON, default={})
+    metadata_json = Column(JSON, default={})
 
     # Relationships
     organisation = relationship("Organisation", back_populates="programmes")
@@ -243,7 +243,7 @@ class Project(TimestampedModel):
     location_community = Column(String(100))
     implementing_org = Column(String(255))
     target_beneficiaries = Column(Integer)
-    metadata = Column(JSON, default={})
+    metadata_json = Column(JSON, default={})
 
     # Relationships
     organisation = relationship("Organisation", back_populates="projects")
@@ -295,7 +295,7 @@ class Source(TimestampedModel):
     credibility_score = Column(Integer, default=50)  # 0-100
     verified = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
-    metadata = Column(JSON, default={})
+    metadata_json = Column(JSON, default={})
 
     # Relationships
     organisation = relationship("Organisation", back_populates="sources")
@@ -345,7 +345,7 @@ class Evidence(TimestampedModel):
     approved_date = Column(String)
 
     # Metadata
-    metadata = Column(JSON, default={})
+    metadata_json = Column(JSON, default={})
     tags = Column(ARRAY(String), default=[])
     version = Column(Integer, default=1)
 
