@@ -1,15 +1,13 @@
 """Global search endpoints."""
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
 from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from fastapi import APIRouter, Depends, Query
+
 from app.database import get_db
-from app.models import User, Evidence, Story, Question, Project
-from app.schemas.core import (
-    EvidenceResponse,
-    StoryResponse,
-    QuestionResponse,
-)
 from app.dependencies import get_current_user
+from app.models import Evidence, Project, Question, Story, User
+from app.schemas.core import EvidenceResponse, QuestionResponse, StoryResponse
 
 router = APIRouter()
 

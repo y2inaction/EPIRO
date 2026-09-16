@@ -1,14 +1,12 @@
 """Organisation management endpoints."""
-from fastapi import APIRouter, HTTPException, status, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+
 from app.database import get_db
-from app.models import User, Organisation
+from app.dependencies import get_current_admin_user, get_current_user
+from app.models import Organisation, User
 from app.repositories.base import BaseRepository
-from app.schemas.core import (
-    OrganisationCreate,
-    OrganisationResponse,
-)
-from app.dependencies import get_current_user, get_current_admin_user
+from app.schemas.core import OrganisationCreate, OrganisationResponse
 
 router = APIRouter()
 

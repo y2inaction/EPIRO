@@ -1,16 +1,13 @@
 """Evidence management endpoints."""
-from fastapi import APIRouter, HTTPException, status, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+
 from app.database import get_db
-from app.models import User
-from app.repositories.evidence import EvidenceRepository
-from app.repositories.base import BaseRepository
-from app.models import Evidence, Organisation, Project, Source
-from app.schemas.core import (
-    EvidenceCreate,
-    EvidenceResponse,
-)
 from app.dependencies import get_current_user
+from app.models import Evidence, Organisation, Project, Source, User
+from app.repositories.base import BaseRepository
+from app.repositories.evidence import EvidenceRepository
+from app.schemas.core import EvidenceCreate, EvidenceResponse
 
 router = APIRouter()
 

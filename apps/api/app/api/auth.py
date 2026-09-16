@@ -1,26 +1,28 @@
 """Authentication endpoints."""
-from fastapi import APIRouter, HTTPException, status, Depends
-from sqlalchemy.orm import Session
 from datetime import timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
 from app.database import get_db
+from app.dependencies import get_current_user
 from app.models import User
 from app.repositories.user import UserRepository
 from app.schemas.auth import (
+    ChangePasswordRequest,
     LoginRequest,
+    RefreshTokenRequest,
     TokenResponse,
     UserCreate,
     UserResponse,
-    RefreshTokenRequest,
-    ChangePasswordRequest,
 )
 from app.security import (
-    hash_password,
-    verify_password,
     create_access_token,
     create_refresh_token,
     decode_token,
+    hash_password,
+    verify_password,
 )
-from app.dependencies import get_current_user
 
 router = APIRouter()
 

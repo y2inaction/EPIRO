@@ -1,14 +1,12 @@
 """Question and citizen engagement endpoints."""
-from fastapi import APIRouter, HTTPException, status, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+
 from app.database import get_db
-from app.models import User, Question, QuestionStatus
-from app.repositories.base import BaseRepository
-from app.schemas.core import (
-    QuestionCreate,
-    QuestionResponse,
-)
 from app.dependencies import get_current_user
+from app.models import Question, QuestionStatus, User
+from app.repositories.base import BaseRepository
+from app.schemas.core import QuestionCreate, QuestionResponse
 
 router = APIRouter()
 
