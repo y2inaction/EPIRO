@@ -104,7 +104,9 @@ class EvidenceRepository(BaseRepository[Evidence]):
         items = query.offset(skip).limit(limit).all()
         return items, total
 
-    def mark_verified(self, evidence_id: str, verified_by: str, notes: str = "") -> Optional[Evidence]:
+    def mark_verified(
+        self, evidence_id: str, verified_by: str, notes: str = ""
+    ) -> Optional[Evidence]:
         """Mark evidence as verified."""
         evidence = self.get_by_id(evidence_id)
         if evidence:

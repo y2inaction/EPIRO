@@ -39,7 +39,10 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="EPIRO API",
-    description="Evidence, Public Information, Engagement, Intelligence & Readiness Operating System",
+    description=(
+        "Evidence, Public Information, Engagement, Intelligence & "
+        "Readiness Operating System"
+    ),
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -96,7 +99,10 @@ async def root():
     return {
         "name": "EPIRO API",
         "version": "1.0.0",
-        "description": "Evidence, Public Information, Engagement, Intelligence & Readiness Operating System",
+        "description": (
+            "Evidence, Public Information, Engagement, Intelligence & "
+            "Readiness Operating System"
+        ),
     }
 
 

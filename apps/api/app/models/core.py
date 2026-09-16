@@ -102,11 +102,21 @@ class Organisation(TimestampedModel):
     metadata = Column(JSON, default={})
 
     # Relationships
-    users = relationship("User", secondary=user_organisation, back_populates="organisations")
-    programmes = relationship("Programme", back_populates="organisation", cascade="all, delete-orphan")
-    projects = relationship("Project", back_populates="organisation", cascade="all, delete-orphan")
-    evidence_items = relationship("Evidence", back_populates="organisation", cascade="all, delete-orphan")
-    sources = relationship("Source", back_populates="organisation", cascade="all, delete-orphan")
+    users = relationship(
+        "User", secondary=user_organisation, back_populates="organisations"
+    )
+    programmes = relationship(
+        "Programme", back_populates="organisation", cascade="all, delete-orphan"
+    )
+    projects = relationship(
+        "Project", back_populates="organisation", cascade="all, delete-orphan"
+    )
+    evidence_items = relationship(
+        "Evidence", back_populates="organisation", cascade="all, delete-orphan"
+    )
+    sources = relationship(
+        "Source", back_populates="organisation", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         Index('idx_organisation_code', 'code'),
@@ -132,7 +142,9 @@ class User(TimestampedModel):
     preferences = Column(JSON, default={})
 
     # Relationships
-    organisations = relationship("Organisation", secondary=user_organisation, back_populates="users")
+    organisations = relationship(
+        "Organisation", secondary=user_organisation, back_populates="users"
+    )
 
     __table_args__ = (
         Index('idx_user_email', 'email'),
@@ -153,7 +165,11 @@ class ThematicArea(TimestampedModel):
     is_active = Column(Boolean, default=True)
 
     # Relationships
-    programmes = relationship("Programme", secondary=programme_thematic, back_populates="thematic_areas")
+    programmes = relationship(
+        "Programme",
+        secondary=programme_thematic,
+        back_populates="thematic_areas",
+    )
     evidence_items = relationship("Evidence", back_populates="thematic_area")
 
     __table_args__ = (
@@ -169,7 +185,11 @@ class Programme(TimestampedModel):
     name = Column(String(255), nullable=False)
     code = Column(String(100), nullable=False)
     description = Column(Text)
-    organisation_id = Column(UUID(as_uuid=True), ForeignKey('organisation.id'), nullable=False)
+    organisation_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('organisation.id'),
+        nullable=False,
+    )
     start_date = Column(String)
     end_date = Column(String)
     budget = Column(Integer)
@@ -178,8 +198,14 @@ class Programme(TimestampedModel):
 
     # Relationships
     organisation = relationship("Organisation", back_populates="programmes")
-    projects = relationship("Project", back_populates="programme", cascade="all, delete-orphan")
-    thematic_areas = relationship("ThematicArea", secondary=programme_thematic, back_populates="programmes")
+    projects = relationship(
+        "Project", back_populates="programme", cascade="all, delete-orphan"
+    )
+    thematic_areas = relationship(
+        "ThematicArea",
+        secondary=programme_thematic,
+        back_populates="programmes",
+    )
 
     __table_args__ = (
         UniqueConstraint('organisation_id', 'code', name='uq_programme_org_code'),
