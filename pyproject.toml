@@ -27,15 +27,3 @@ warn_unused_configs = true
 ignore_missing_imports = true
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = "-v --strict-markers --tb=short"
-markers = [
-    "unit: Unit tests",
-    "integration: Integration tests",
-    "slow: Slow running tests",
-]
