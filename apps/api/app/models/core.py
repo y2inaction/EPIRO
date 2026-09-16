@@ -4,11 +4,7 @@ import uuid
 from enum import Enum
 
 from geoalchemy2 import Geometry
-from sqlalchemy import (
-    Boolean,
-    CheckConstraint,
-    Column,
-)
+from sqlalchemy import Boolean, CheckConstraint, Column
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy import ForeignKey, Index, Integer, String, Table, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID

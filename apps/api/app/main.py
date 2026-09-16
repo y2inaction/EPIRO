@@ -8,16 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api import (
-    auth,
-    evidence,
-    health,
-    organisations,
-    questions,
-    search,
-    stories,
-    users,
-)
+from app.api import auth, evidence, health, organisations, questions, search, stories, users
 from app.config import settings
 from app.database import engine
 from app.models import Base
