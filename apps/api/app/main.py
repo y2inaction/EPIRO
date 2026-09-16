@@ -1,18 +1,33 @@
 """EPIRO FastAPI application."""
 import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
+
+from app.api import (
+    auth,
+    evidence,
+    health,
+    organisations,
+    questions,
+    stories,
+    users,
+)
 from app.config import settings
 from app.database import engine
 from app.models import Base
-from app.api import health, auth, users, organisations, evidence, stories, questions
 
 # Configure logging
 logging.basicConfig(level=settings.log_level)
 logger = logging.getLogger(__name__)
+
+EPIRO_DESCRIPTION = (
+    "Evidence, Public Information, Engagement, Intelligence & "
+    "Readiness Operating System"
+)
 
 
 @asynccontextmanager
@@ -39,10 +54,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="EPIRO API",
-    description=(
-        "Evidence, Public Information, Engagement, Intelligence & "
-        "Readiness Operating System"
-    ),
+    description=EPIRO_DESCRIPTION,
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -99,10 +111,7 @@ async def root():
     return {
         "name": "EPIRO API",
         "version": "1.0.0",
-        "description": (
-            "Evidence, Public Information, Engagement, Intelligence & "
-            "Readiness Operating System"
-        ),
+        "description": EPIRO_DESCRIPTION,
     }
 
 
