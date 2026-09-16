@@ -1,4 +1,5 @@
 """Models module."""
+
 from .base import Base, TimestampedModel
 from .core import (
     User,

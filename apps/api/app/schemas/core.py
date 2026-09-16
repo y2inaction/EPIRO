@@ -1,4 +1,5 @@
 """Core entity schemas."""
+
 from datetime import datetime
 from typing import List, Optional
 
@@ -7,6 +8,7 @@ from pydantic import BaseModel, Field
 
 class OrganisationBase(BaseModel):
     """Base organisation schema."""
+
     name: str = Field(..., min_length=1, max_length=255)
     code: str = Field(..., min_length=1, max_length=50)
     description: Optional[str] = None
@@ -17,11 +19,13 @@ class OrganisationBase(BaseModel):
 
 class OrganisationCreate(OrganisationBase):
     """Organisation creation schema."""
+
     pass
 
 
 class OrganisationResponse(OrganisationBase):
     """Organisation response schema."""
+
     id: str
     is_active: bool
     created_at: str
@@ -33,6 +37,7 @@ class OrganisationResponse(OrganisationBase):
 
 class ThematicAreaBase(BaseModel):
     """Base thematic area schema."""
+
     name: str = Field(..., min_length=1, max_length=100)
     code: str = Field(..., min_length=1, max_length=50)
     description: Optional[str] = None
@@ -40,6 +45,7 @@ class ThematicAreaBase(BaseModel):
 
 class ThematicAreaResponse(ThematicAreaBase):
     """Thematic area response schema."""
+
     id: str
     is_active: bool
 
@@ -49,6 +55,7 @@ class ThematicAreaResponse(ThematicAreaBase):
 
 class ProgrammeBase(BaseModel):
     """Base programme schema."""
+
     name: str = Field(..., min_length=1, max_length=255)
     code: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = None
@@ -59,11 +66,13 @@ class ProgrammeBase(BaseModel):
 
 class ProgrammeCreate(ProgrammeBase):
     """Programme creation schema."""
+
     organisation_id: str
 
 
 class ProgrammeResponse(ProgrammeBase):
     """Programme response schema."""
+
     id: str
     organisation_id: str
     status: str
@@ -76,6 +85,7 @@ class ProgrammeResponse(ProgrammeBase):
 
 class ProjectBase(BaseModel):
     """Base project schema."""
+
     name: str = Field(..., min_length=1, max_length=255)
     code: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = None
@@ -91,12 +101,14 @@ class ProjectBase(BaseModel):
 
 class ProjectCreate(ProjectBase):
     """Project creation schema."""
+
     organisation_id: str
     programme_id: Optional[str] = None
 
 
 class ProjectResponse(ProjectBase):
     """Project response schema."""
+
     id: str
     organisation_id: str
     programme_id: Optional[str] = None
@@ -110,6 +122,7 @@ class ProjectResponse(ProjectBase):
 
 class SourceBase(BaseModel):
     """Base source schema."""
+
     name: str = Field(..., min_length=1, max_length=255)
     source_type: str = Field(..., min_length=1, max_length=50)
     url: Optional[str] = None
@@ -118,11 +131,13 @@ class SourceBase(BaseModel):
 
 class SourceCreate(SourceBase):
     """Source creation schema."""
+
     organisation_id: str
 
 
 class SourceResponse(SourceBase):
     """Source response schema."""
+
     id: str
     organisation_id: str
     credibility_score: int
@@ -137,6 +152,7 @@ class SourceResponse(SourceBase):
 
 class EvidenceBase(BaseModel):
     """Base evidence schema."""
+
     title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     evidence_date: Optional[str] = None
@@ -147,6 +163,7 @@ class EvidenceBase(BaseModel):
 
 class EvidenceCreate(EvidenceBase):
     """Evidence creation schema."""
+
     organisation_id: str
     source_id: str
     project_id: Optional[str] = None
@@ -156,6 +173,7 @@ class EvidenceCreate(EvidenceBase):
 
 class EvidenceResponse(EvidenceBase):
     """Evidence response schema."""
+
     id: str
     organisation_id: str
     source_id: str
@@ -175,6 +193,7 @@ class EvidenceResponse(EvidenceBase):
 
 class StoryBase(BaseModel):
     """Base story schema."""
+
     title: str = Field(..., min_length=1, max_length=255)
     headline: Optional[str] = None
     body: str = Field(..., min_length=1)
@@ -184,11 +203,13 @@ class StoryBase(BaseModel):
 
 class StoryCreate(StoryBase):
     """Story creation schema."""
+
     evidence_id: str
 
 
 class StoryResponse(StoryBase):
     """Story response schema."""
+
     id: str
     evidence_id: str
     status: str
@@ -204,6 +225,7 @@ class StoryResponse(StoryBase):
 
 class QuestionBase(BaseModel):
     """Base question schema."""
+
     category: Optional[str] = None
     question_text: str = Field(..., min_length=1)
     location_state: Optional[str] = None
@@ -214,11 +236,13 @@ class QuestionBase(BaseModel):
 
 class QuestionCreate(QuestionBase):
     """Question creation schema."""
+
     submitter_email: Optional[str] = None
 
 
 class QuestionResponse(QuestionBase):
     """Question response schema."""
+
     id: str
     status: str
     response: Optional[str] = None
@@ -233,17 +257,20 @@ class QuestionResponse(QuestionBase):
 
 class IntegritySignalBase(BaseModel):
     """Base integrity signal schema."""
+
     claim: str = Field(..., min_length=1)
     source: Optional[str] = None
 
 
 class IntegritySignalCreate(IntegritySignalBase):
     """Integrity signal creation schema."""
+
     organisation_id: Optional[str] = None
 
 
 class IntegritySignalResponse(IntegritySignalBase):
     """Integrity signal response schema."""
+
     id: str
     priority: str
     status: str
@@ -258,6 +285,7 @@ class IntegritySignalResponse(IntegritySignalBase):
 
 class ScenarioBase(BaseModel):
     """Base scenario schema."""
+
     name: str = Field(..., min_length=1, max_length=255)
     category: Optional[str] = None
     description: Optional[str] = None
@@ -266,11 +294,13 @@ class ScenarioBase(BaseModel):
 
 class ScenarioCreate(ScenarioBase):
     """Scenario creation schema."""
+
     organisation_id: Optional[str] = None
 
 
 class ScenarioResponse(ScenarioBase):
     """Scenario response schema."""
+
     id: str
     status: str
     playbook_url: Optional[str] = None
@@ -284,6 +314,7 @@ class ScenarioResponse(ScenarioBase):
 
 class PaginatedResponse(BaseModel):
     """Paginated response schema."""
+
     total: int
     page: int
     page_size: int

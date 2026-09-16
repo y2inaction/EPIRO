@@ -1,9 +1,19 @@
 """Core EPIRO models."""
+
 import uuid
 from enum import Enum
 from sqlalchemy import (
-    Column, String, Text, Integer, Boolean, ForeignKey, Table,
-    Enum as SQLEnum, Index, UniqueConstraint, CheckConstraint
+    Column,
+    String,
+    Text,
+    Integer,
+    Boolean,
+    ForeignKey,
+    Table,
+    Enum as SQLEnum,
+    Index,
+    UniqueConstraint,
+    CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSON, ARRAY
 from sqlalchemy.orm import relationship
@@ -13,6 +23,7 @@ from .base import TimestampedModel
 
 class Role(str, Enum):
     """User roles."""
+
     SUPER_ADMIN = "super_admin"
     EXECUTIVE = "executive"
     EDITOR = "editor"
@@ -31,6 +42,7 @@ class Role(str, Enum):
 
 class EvidenceStatus(str, Enum):
     """Evidence lifecycle statuses."""
+
     DRAFT = "draft"
     SUBMITTED = "submitted"
     UNDER_REVIEW = "under_review"
@@ -43,6 +55,7 @@ class EvidenceStatus(str, Enum):
 
 class QuestionStatus(str, Enum):
     """Question workflow statuses."""
+
     NEW = "new"
     TRIAGED = "triaged"
     RESEARCHING = "researching"
@@ -55,6 +68,7 @@ class QuestionStatus(str, Enum):
 
 class IntegritySignalPriority(str, Enum):
     """Information integrity signal priority."""
+
     LOW_RISK = "low_risk"
     EMERGING = "emerging"
     MATERIAL = "material"
@@ -64,6 +78,7 @@ class IntegritySignalPriority(str, Enum):
 
 class ReadinessStatus(str, Enum):
     """Readiness matrix status."""
+
     GREEN = "green"
     AMBER = "amber"
     RED = "red"
@@ -72,23 +87,24 @@ class ReadinessStatus(str, Enum):
 
 # Association tables
 user_organisation = Table(
-    'user_organisation',
+    "user_organisation",
     TimestampedModel.metadata,
-    Column('user_id', UUID(as_uuid=True), ForeignKey('user.id'), primary_key=True),
-    Column('organisation_id', UUID(as_uuid=True), ForeignKey('organisation.id'), primary_key=True),
-    Column('role', SQLEnum(Role), default=Role.PUBLIC_USER),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("user.id"), primary_key=True),
+    Column("organisation_id", UUID(as_uuid=True), ForeignKey("organisation.id"), primary_key=True),
+    Column("role", SQLEnum(Role), default=Role.PUBLIC_USER),
 )
 
 programme_thematic = Table(
-    'programme_thematic',
+    "programme_thematic",
     TimestampedModel.metadata,
-    Column('programme_id', UUID(as_uuid=True), ForeignKey('programme.id'), primary_key=True),
-    Column('thematic_id', UUID(as_uuid=True), ForeignKey('thematic_area.id'), primary_key=True),
+    Column("programme_id", UUID(as_uuid=True), ForeignKey("programme.id"), primary_key=True),
+    Column("thematic_id", UUID(as_uuid=True), ForeignKey("thematic_area.id"), primary_key=True),
 )
 
 
 class Organisation(TimestampedModel):
     """Organisation model."""
+
     __tablename__ = "organisation"
 
     name = Column(String(255), nullable=False, unique=True)
@@ -102,30 +118,25 @@ class Organisation(TimestampedModel):
     metadata = Column(JSON, default={})
 
     # Relationships
-    users = relationship(
-        "User", secondary=user_organisation, back_populates="organisations"
-    )
+    users = relationship("User", secondary=user_organisation, back_populates="organisations")
     programmes = relationship(
         "Programme", back_populates="organisation", cascade="all, delete-orphan"
     )
-    projects = relationship(
-        "Project", back_populates="organisation", cascade="all, delete-orphan"
-    )
+    projects = relationship("Project", back_populates="organisation", cascade="all, delete-orphan")
     evidence_items = relationship(
         "Evidence", back_populates="organisation", cascade="all, delete-orphan"
     )
-    sources = relationship(
-        "Source", back_populates="organisation", cascade="all, delete-orphan"
-    )
+    sources = relationship("Source", back_populates="organisation", cascade="all, delete-orphan")
 
     __table_args__ = (
-        Index('idx_organisation_code', 'code'),
-        Index('idx_organisation_active', 'is_active'),
+        Index("idx_organisation_code", "code"),
+        Index("idx_organisation_active", "is_active"),
     )
 
 
 class User(TimestampedModel):
     """User model."""
+
     __tablename__ = "user"
 
     email = Column(String(255), nullable=False, unique=True)
@@ -147,13 +158,14 @@ class User(TimestampedModel):
     )
 
     __table_args__ = (
-        Index('idx_user_email', 'email'),
-        Index('idx_user_active', 'is_active'),
+        Index("idx_user_email", "email"),
+        Index("idx_user_active", "is_active"),
     )
 
 
 class ThematicArea(TimestampedModel):
     """Thematic stream configuration."""
+
     __tablename__ = "thematic_area"
 
     name = Column(String(100), nullable=False, unique=True)
@@ -173,13 +185,14 @@ class ThematicArea(TimestampedModel):
     evidence_items = relationship("Evidence", back_populates="thematic_area")
 
     __table_args__ = (
-        Index('idx_thematic_code', 'code'),
-        Index('idx_thematic_active', 'is_active'),
+        Index("idx_thematic_code", "code"),
+        Index("idx_thematic_active", "is_active"),
     )
 
 
 class Programme(TimestampedModel):
     """Programme model."""
+
     __tablename__ = "programme"
 
     name = Column(String(255), nullable=False)
@@ -187,7 +200,7 @@ class Programme(TimestampedModel):
     description = Column(Text)
     organisation_id = Column(
         UUID(as_uuid=True),
-        ForeignKey('organisation.id'),
+        ForeignKey("organisation.id"),
         nullable=False,
     )
     start_date = Column(String)
@@ -198,9 +211,7 @@ class Programme(TimestampedModel):
 
     # Relationships
     organisation = relationship("Organisation", back_populates="programmes")
-    projects = relationship(
-        "Project", back_populates="programme", cascade="all, delete-orphan"
-    )
+    projects = relationship("Project", back_populates="programme", cascade="all, delete-orphan")
     thematic_areas = relationship(
         "ThematicArea",
         secondary=programme_thematic,
@@ -208,20 +219,21 @@ class Programme(TimestampedModel):
     )
 
     __table_args__ = (
-        UniqueConstraint('organisation_id', 'code', name='uq_programme_org_code'),
-        Index('idx_programme_org_id', 'organisation_id'),
+        UniqueConstraint("organisation_id", "code", name="uq_programme_org_code"),
+        Index("idx_programme_org_id", "organisation_id"),
     )
 
 
 class Project(TimestampedModel):
     """Project model."""
+
     __tablename__ = "project"
 
     name = Column(String(255), nullable=False)
     code = Column(String(100), nullable=False)
     description = Column(Text)
-    organisation_id = Column(UUID(as_uuid=True), ForeignKey('organisation.id'), nullable=False)
-    programme_id = Column(UUID(as_uuid=True), ForeignKey('programme.id'), nullable=True)
+    organisation_id = Column(UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False)
+    programme_id = Column(UUID(as_uuid=True), ForeignKey("programme.id"), nullable=True)
     start_date = Column(String)
     end_date = Column(String)
     budget = Column(Integer)
@@ -240,23 +252,24 @@ class Project(TimestampedModel):
     locations = relationship("Location", back_populates="project")
 
     __table_args__ = (
-        UniqueConstraint('organisation_id', 'code', name='uq_project_org_code'),
-        Index('idx_project_org_id', 'organisation_id'),
-        Index('idx_project_programme_id', 'programme_id'),
+        UniqueConstraint("organisation_id", "code", name="uq_project_org_code"),
+        Index("idx_project_org_id", "organisation_id"),
+        Index("idx_project_programme_id", "programme_id"),
     )
 
 
 class Location(TimestampedModel):
     """Geographic location model."""
+
     __tablename__ = "location"
 
-    project_id = Column(UUID(as_uuid=True), ForeignKey('project.id'), nullable=False)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("project.id"), nullable=False)
     state = Column(String(50))
     lga = Column(String(100))
     community = Column(String(100))
     latitude = Column(String)
     longitude = Column(String)
-    geom = Column(Geometry('POINT', srid=4326), nullable=True)
+    geom = Column(Geometry("POINT", srid=4326), nullable=True)
     description = Column(Text)
 
     # Relationships
@@ -264,16 +277,17 @@ class Location(TimestampedModel):
     evidence_items = relationship("Evidence", back_populates="location")
 
     __table_args__ = (
-        Index('idx_location_project_id', 'project_id'),
-        Index('idx_location_state', 'state'),
+        Index("idx_location_project_id", "project_id"),
+        Index("idx_location_state", "state"),
     )
 
 
 class Source(TimestampedModel):
     """Source registry model."""
+
     __tablename__ = "source"
 
-    organisation_id = Column(UUID(as_uuid=True), ForeignKey('organisation.id'), nullable=False)
+    organisation_id = Column(UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False)
     name = Column(String(255), nullable=False)
     source_type = Column(String(50), nullable=False)  # government, institutional, field, etc.
     url = Column(String(500))
@@ -288,20 +302,21 @@ class Source(TimestampedModel):
     evidence_items = relationship("Evidence", back_populates="source")
 
     __table_args__ = (
-        Index('idx_source_organisation_id', 'organisation_id'),
-        Index('idx_source_type', 'source_type'),
+        Index("idx_source_organisation_id", "organisation_id"),
+        Index("idx_source_type", "source_type"),
     )
 
 
 class Evidence(TimestampedModel):
     """Evidence registry model."""
+
     __tablename__ = "evidence"
 
-    organisation_id = Column(UUID(as_uuid=True), ForeignKey('organisation.id'), nullable=False)
-    project_id = Column(UUID(as_uuid=True), ForeignKey('project.id'), nullable=True)
-    location_id = Column(UUID(as_uuid=True), ForeignKey('location.id'), nullable=True)
-    source_id = Column(UUID(as_uuid=True), ForeignKey('source.id'), nullable=False)
-    thematic_area_id = Column(UUID(as_uuid=True), ForeignKey('thematic_area.id'), nullable=True)
+    organisation_id = Column(UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("project.id"), nullable=True)
+    location_id = Column(UUID(as_uuid=True), ForeignKey("location.id"), nullable=True)
+    source_id = Column(UUID(as_uuid=True), ForeignKey("source.id"), nullable=False)
+    thematic_area_id = Column(UUID(as_uuid=True), ForeignKey("thematic_area.id"), nullable=True)
 
     title = Column(String(255), nullable=False)
     description = Column(Text)
@@ -344,17 +359,18 @@ class Evidence(TimestampedModel):
     audit_logs = relationship("AuditLog", back_populates="evidence")
 
     __table_args__ = (
-        Index('idx_evidence_organisation_id', 'organisation_id'),
-        Index('idx_evidence_status', 'status'),
-        Index('idx_evidence_project_id', 'project_id'),
+        Index("idx_evidence_organisation_id", "organisation_id"),
+        Index("idx_evidence_status", "status"),
+        Index("idx_evidence_project_id", "project_id"),
     )
 
 
 class Story(TimestampedModel):
     """Public information story model."""
+
     __tablename__ = "story"
 
-    evidence_id = Column(UUID(as_uuid=True), ForeignKey('evidence.id'), nullable=False)
+    evidence_id = Column(UUID(as_uuid=True), ForeignKey("evidence.id"), nullable=False)
     title = Column(String(255), nullable=False)
     headline = Column(String(500))
     body = Column(Text, nullable=False)
@@ -369,16 +385,17 @@ class Story(TimestampedModel):
     evidence = relationship("Evidence", back_populates="stories")
 
     __table_args__ = (
-        Index('idx_story_evidence_id', 'evidence_id'),
-        Index('idx_story_status', 'status'),
+        Index("idx_story_evidence_id", "evidence_id"),
+        Index("idx_story_status", "status"),
     )
 
 
 class Question(TimestampedModel):
     """Citizen question model."""
+
     __tablename__ = "question"
 
-    organisation_id = Column(UUID(as_uuid=True), ForeignKey('organisation.id'), nullable=True)
+    organisation_id = Column(UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=True)
     category = Column(String(100))
     question_text = Column(Text, nullable=False)
     location_state = Column(String(50))
@@ -394,16 +411,17 @@ class Question(TimestampedModel):
     is_published = Column(Boolean, default=False)
 
     __table_args__ = (
-        Index('idx_question_status', 'status'),
-        Index('idx_question_organisation_id', 'organisation_id'),
+        Index("idx_question_status", "status"),
+        Index("idx_question_organisation_id", "organisation_id"),
     )
 
 
 class IntegritySignal(TimestampedModel):
     """Information integrity signal model."""
+
     __tablename__ = "integrity_signal"
 
-    organisation_id = Column(UUID(as_uuid=True), ForeignKey('organisation.id'), nullable=True)
+    organisation_id = Column(UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=True)
     claim = Column(Text, nullable=False)
     source = Column(String(255))
     priority = Column(SQLEnum(IntegritySignalPriority), default=IntegritySignalPriority.LOW_RISK)
@@ -414,16 +432,17 @@ class IntegritySignal(TimestampedModel):
     approved_by = Column(UUID(as_uuid=True))
 
     __table_args__ = (
-        Index('idx_integrity_priority', 'priority'),
-        Index('idx_integrity_status', 'status'),
+        Index("idx_integrity_priority", "priority"),
+        Index("idx_integrity_status", "status"),
     )
 
 
 class Scenario(TimestampedModel):
     """Readiness scenario model."""
+
     __tablename__ = "scenario"
 
-    organisation_id = Column(UUID(as_uuid=True), ForeignKey('organisation.id'), nullable=True)
+    organisation_id = Column(UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=True)
     name = Column(String(255), nullable=False)
     category = Column(String(50))  # policy, security, information, political, electoral, emergency
     description = Column(Text)
@@ -433,18 +452,17 @@ class Scenario(TimestampedModel):
     playbook_url = Column(String(500))
     last_drill_date = Column(String)
 
-    __table_args__ = (
-        Index('idx_scenario_status', 'status'),
-    )
+    __table_args__ = (Index("idx_scenario_status", "status"),)
 
 
 class AuditLog(TimestampedModel):
     """Audit logging model."""
+
     __tablename__ = "audit_log"
 
-    organisation_id = Column(UUID(as_uuid=True), ForeignKey('organisation.id'), nullable=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey('user.id'), nullable=True)
-    evidence_id = Column(UUID(as_uuid=True), ForeignKey('evidence.id'), nullable=True)
+    organisation_id = Column(UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("user.id"), nullable=True)
+    evidence_id = Column(UUID(as_uuid=True), ForeignKey("evidence.id"), nullable=True)
     action = Column(String(255), nullable=False)
     entity_type = Column(String(50), nullable=False)
     entity_id = Column(UUID(as_uuid=True))
@@ -457,7 +475,7 @@ class AuditLog(TimestampedModel):
     evidence = relationship("Evidence", back_populates="audit_logs")
 
     __table_args__ = (
-        Index('idx_audit_organisation_id', 'organisation_id'),
-        Index('idx_audit_user_id', 'user_id'),
-        Index('idx_audit_action', 'action'),
+        Index("idx_audit_organisation_id", "organisation_id"),
+        Index("idx_audit_user_id", "user_id"),
+        Index("idx_audit_action", "action"),
     )

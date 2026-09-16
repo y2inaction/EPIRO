@@ -1,4 +1,5 @@
 """Base repository class for common CRUD operations."""
+
 from typing import TypeVar, Generic, Type, Optional, List, Any
 from uuid import UUID
 from sqlalchemy.orm import Session

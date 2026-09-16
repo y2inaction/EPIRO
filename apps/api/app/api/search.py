@@ -1,4 +1,5 @@
 """Global search endpoints."""
+
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -41,9 +42,7 @@ async def global_search(
         evidence_total = evidence_query.count()
         evidence_items = evidence_query.offset(skip).limit(limit).all()
 
-        results["evidence"] = [
-            EvidenceResponse.model_validate(item) for item in evidence_items
-        ]
+        results["evidence"] = [EvidenceResponse.model_validate(item) for item in evidence_items]
         results["total"] += evidence_total
 
     # Search stories
@@ -58,22 +57,16 @@ async def global_search(
         story_total = story_query.count()
         story_items = story_query.offset(skip).limit(limit).all()
 
-        results["stories"] = [
-            StoryResponse.model_validate(item) for item in story_items
-        ]
+        results["stories"] = [StoryResponse.model_validate(item) for item in story_items]
         results["total"] += story_total
 
     # Search questions
     if not content_type or content_type == "question":
-        question_query = db.query(Question).filter(
-            Question.question_text.ilike(f"%{q}%")
-        )
+        question_query = db.query(Question).filter(Question.question_text.ilike(f"%{q}%"))
         question_total = question_query.count()
         question_items = question_query.offset(skip).limit(limit).all()
 
-        results["questions"] = [
-            QuestionResponse.model_validate(item) for item in question_items
-        ]
+        results["questions"] = [QuestionResponse.model_validate(item) for item in question_items]
         results["total"] += question_total
 
     # Search projects

@@ -1,4 +1,5 @@
 """Base model with common fields."""
+
 import uuid
 from datetime import datetime
 from sqlalchemy import Column, DateTime, String, func

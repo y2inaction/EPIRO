@@ -1,7 +1,11 @@
 """Database configuration and session management."""
+
+from typing import Generator
+
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import NullPool
+
 from app.config import settings
 
 # Create engine
@@ -20,7 +24,7 @@ SessionLocal = sessionmaker(
 )
 
 
-def get_db() -> Session:
+def get_db() -> Generator[Session, None, None]:
     """Get database session."""
     db = SessionLocal()
     try:

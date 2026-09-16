@@ -1,4 +1,5 @@
 """Authentication endpoints."""
+
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -49,9 +50,7 @@ async def register(user_create: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(
-    request: LoginRequest, db: Session = Depends(get_db)
-):
+async def login(request: LoginRequest, db: Session = Depends(get_db)):
     """Login with email and password."""
     user_repo = UserRepository(db)
 
@@ -88,9 +87,7 @@ async def login(
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(
-    request: RefreshTokenRequest, db: Session = Depends(get_db)
-):
+async def refresh_token(request: RefreshTokenRequest, db: Session = Depends(get_db)):
     """Refresh access token."""
     payload = decode_token(request.refresh_token)
 

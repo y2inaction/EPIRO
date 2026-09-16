@@ -1,4 +1,5 @@
 """EPIRO FastAPI application."""
+
 import logging
 from contextlib import asynccontextmanager
 
@@ -26,8 +27,7 @@ logging.basicConfig(level=settings.log_level)
 logger = logging.getLogger(__name__)
 
 EPIRO_DESCRIPTION = (
-    "Evidence, Public Information, Engagement, Intelligence & "
-    "Readiness Operating System"
+    "Evidence, Public Information, Engagement, Intelligence & " "Readiness Operating System"
 )
 
 
@@ -93,24 +93,16 @@ async def general_exception_handler(request, exc):
 
 # Include routers
 app.include_router(health.router, tags=["Health"])
-app.include_router(
-    auth.router, prefix="/api/v1/auth", tags=["Authentication"]
-)
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
 app.include_router(
     organisations.router,
     prefix="/api/v1/organisations",
     tags=["Organisations"],
 )
-app.include_router(
-    evidence.router, prefix="/api/v1/evidence", tags=["Evidence"]
-)
-app.include_router(
-    stories.router, prefix="/api/v1/stories", tags=["Stories"]
-)
-app.include_router(
-    questions.router, prefix="/api/v1/questions", tags=["Questions"]
-)
+app.include_router(evidence.router, prefix="/api/v1/evidence", tags=["Evidence"])
+app.include_router(stories.router, prefix="/api/v1/stories", tags=["Stories"])
+app.include_router(questions.router, prefix="/api/v1/questions", tags=["Questions"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])
 
 
@@ -127,6 +119,7 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "app.main:app",
         host=settings.api_host,

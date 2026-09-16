@@ -1,4 +1,5 @@
 """Security utilities for authentication and authorization."""
+
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import jwt
@@ -24,9 +25,7 @@ def create_access_token(user_id: str, expires_delta: Optional[timedelta] = None)
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(
-            minutes=settings.jwt_expiry_minutes
-        )
+        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expiry_minutes)
 
     to_encode = {
         "sub": user_id,
@@ -44,9 +43,7 @@ def create_access_token(user_id: str, expires_delta: Optional[timedelta] = None)
 
 def create_refresh_token(user_id: str) -> str:
     """Create a JWT refresh token."""
-    expire = datetime.now(timezone.utc) + timedelta(
-        days=settings.refresh_token_expiry_days
-    )
+    expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expiry_days)
 
     to_encode = {
         "sub": user_id,
