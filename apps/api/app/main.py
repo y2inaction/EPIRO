@@ -13,6 +13,7 @@ from app.api import (
     health,
     organisations,
     questions,
+    search,
     stories,
     users,
 )
@@ -110,9 +111,6 @@ app.include_router(
 app.include_router(
     questions.router, prefix="/api/v1/questions", tags=["Questions"]
 )
-
-# Import search after other imports to avoid circular dependencies
-from app.api import search
 app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])
 
 

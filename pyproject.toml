@@ -5,6 +5,10 @@ target-versions = ["py311"]
 [tool.isort]
 profile = "black"
 line_length = 100
+known_first_party = ["app"]
+skip_glob = ["*/migrations/*"]
+# Allow imports after code to handle circular dependency workarounds
+allow_separated_trailing_comma = true
 
 [tool.mypy]
 python_version = "3.11"
