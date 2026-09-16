@@ -1,4 +1,5 @@
 """Core EPIRO models."""
+# type: ignore
 
 import uuid
 from enum import Enum

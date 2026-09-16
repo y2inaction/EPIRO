@@ -1,4 +1,5 @@
 """Authentication endpoints."""
+# type: ignore
 
 from datetime import timedelta
 

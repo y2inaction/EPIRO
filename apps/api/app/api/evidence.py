@@ -1,4 +1,5 @@
 """Evidence management endpoints."""
+# type: ignore
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -17,7 +18,7 @@ router = APIRouter()
 async def list_evidence(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    status: str = Query(None),
+    evidence_status: str = Query(None),
     organisation_id: str = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

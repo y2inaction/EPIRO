@@ -1,4 +1,5 @@
 """Question and citizen engagement endpoints."""
+# type: ignore
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session

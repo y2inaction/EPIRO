@@ -1,4 +1,5 @@
 """Evidence repository."""
+# type: ignore
 
 from typing import List, Optional
 

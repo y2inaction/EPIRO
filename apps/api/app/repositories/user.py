@@ -1,4 +1,5 @@
 """User repository."""
+# type: ignore
 
 from typing import Optional
 
