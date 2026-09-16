@@ -6,7 +6,8 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'EPIRO',
-  description: 'Evidence, Public Information, Engagement, Intelligence & Readiness Operating System',
+  description:
+    'Evidence, Public Information, Engagement, Intelligence & Readiness Operating System',
 }
 
 export default function RootLayout({

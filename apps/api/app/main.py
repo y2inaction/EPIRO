@@ -92,12 +92,24 @@ async def general_exception_handler(request, exc):
 
 # Include routers
 app.include_router(health.router, tags=["Health"])
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
+app.include_router(
+    auth.router, prefix="/api/v1/auth", tags=["Authentication"]
+)
 app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
-app.include_router(organisations.router, prefix="/api/v1/organisations", tags=["Organisations"])
-app.include_router(evidence.router, prefix="/api/v1/evidence", tags=["Evidence"])
-app.include_router(stories.router, prefix="/api/v1/stories", tags=["Stories"])
-app.include_router(questions.router, prefix="/api/v1/questions", tags=["Questions"])
+app.include_router(
+    organisations.router,
+    prefix="/api/v1/organisations",
+    tags=["Organisations"],
+)
+app.include_router(
+    evidence.router, prefix="/api/v1/evidence", tags=["Evidence"]
+)
+app.include_router(
+    stories.router, prefix="/api/v1/stories", tags=["Stories"]
+)
+app.include_router(
+    questions.router, prefix="/api/v1/questions", tags=["Questions"]
+)
 
 # Import search after other imports to avoid circular dependencies
 from app.api import search
