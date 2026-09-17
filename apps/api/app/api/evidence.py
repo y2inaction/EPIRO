@@ -17,10 +17,11 @@ from app.authorization import (
     get_access,
 )
 from app.database import get_db
-from app.models import Evidence, Organisation, Source
+from app.models import Evidence, Geography, Indicator, Organisation, Project, Source
 from app.repositories.base import BaseRepository
 from app.repositories.evidence import EvidenceRepository
 from app.schemas.core import EvidenceCreate, EvidenceResponse, EvidenceUpdate
+from app.services.indicator import record_measurement
 
 router = APIRouter()
 
@@ -84,6 +85,41 @@ async def get_evidence(
     return _get_scoped_evidence(EvidenceRepository(db), evidence_id, access)
 
 
+def _check_linked_records(db: Session, organisation_id: uuid.UUID, payload: dict) -> None:
+    """Reject links that point at another tenant's records or at nothing.
+
+    Evidence is only traceable if what it points at is real and belongs to the
+    same organisation.
+    """
+    project_id = payload.get("project_id")
+    if project_id is not None:
+        project = db.get(Project, project_id)
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+        if project.organisation_id != organisation_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Project belongs to a different organisation",
+            )
+
+    indicator_id = payload.get("indicator_id")
+    if indicator_id is not None:
+        indicator = db.get(Indicator, indicator_id)
+        if indicator is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Indicator not found")
+        if indicator.organisation_id != organisation_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Indicator belongs to a different organisation",
+            )
+
+    geography_id = payload.get("geography_id")
+    if geography_id is not None and db.get(Geography, geography_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Geographic area not found"
+        )
+
+
 @router.post("/", response_model=EvidenceResponse, status_code=status.HTTP_201_CREATED)
 async def create_evidence(
     request: Request,
@@ -115,6 +151,8 @@ async def create_evidence(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Source belongs to a different organisation",
         )
+
+    _check_linked_records(db, evidence_create.organisation_id, evidence_create.model_dump())
 
     evidence_repo = EvidenceRepository(db)
     evidence_data = evidence_create.model_dump()
@@ -150,6 +188,8 @@ async def update_evidence(
     organisation_id = evidence.organisation_id
 
     update_data = evidence_update.model_dump(exclude_unset=True)
+    _check_linked_records(db, organisation_id, update_data)
+
     update_data["updated_by"] = access.user.id
     old_values = {field: audit.serialise(getattr(evidence, field, None)) for field in update_data}
 
@@ -257,6 +297,13 @@ async def approve_evidence(
     verified_by = evidence.verified_by
 
     approved = evidence_repo.mark_approved(evidence_id, access.user.id)
+
+    # An indicator's current value is whatever the most recent approved
+    # evidence measured, so a reported figure always traces to a record.
+    moved = record_measurement(db, approved)
+    if moved is not None:
+        db.commit()
+
     audit.record(
         db,
         action=audit.APPROVED,
