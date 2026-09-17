@@ -7,9 +7,25 @@ from enum import Enum
 from typing import Any, Optional
 
 from geoalchemy2 import Geometry
-from sqlalchemy import Boolean, Column, Date, DateTime
+from sqlalchemy import (
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+)
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy import ForeignKey, Index, Integer, Numeric, String, Table, Text, UniqueConstraint
+from sqlalchemy import (
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    Sequence,
+    String,
+    Table,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -88,6 +104,61 @@ class ReadinessStatus(str, Enum):
     AMBER = "amber"
     RED = "red"
     BLACK = "black"
+
+
+class ProjectStatus(str, Enum):
+    """Project lifecycle states."""
+
+    PROPOSED = "proposed"
+    PLANNED = "planned"
+    ACTIVE = "active"
+    DELAYED = "delayed"
+    COMPLETED = "completed"
+    SUSPENDED = "suspended"
+    ARCHIVED = "archived"
+
+
+class MilestoneStatus(str, Enum):
+    """Milestone states."""
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    MISSED = "missed"
+
+
+class GeographyLevel(str, Enum):
+    """Tiers of the administrative hierarchy."""
+
+    COUNTRY = "country"
+    REGION = "region"
+    STATE = "state"
+    LGA = "lga"
+    WARD = "ward"
+    COMMUNITY = "community"
+
+
+# Coarsest first. A node's parent must sit strictly above it here, which
+# prevents inversions without forcing every country to use every tier: not
+# every country has a region layer between country and state.
+GEOGRAPHY_LEVEL_ORDER: tuple[GeographyLevel, ...] = (
+    GeographyLevel.COUNTRY,
+    GeographyLevel.REGION,
+    GeographyLevel.STATE,
+    GeographyLevel.LGA,
+    GeographyLevel.WARD,
+    GeographyLevel.COMMUNITY,
+)
+
+
+def geography_level_rank(level: GeographyLevel) -> int:
+    """Position of a level in the hierarchy, coarsest first."""
+    return GEOGRAPHY_LEVEL_ORDER.index(level)
+
+
+# Backs the human-readable evidence reference. Declared on the metadata so
+# Alembic creates it alongside the tables.
+evidence_reference_seq = Sequence("evidence_reference_seq", metadata=Base.metadata)
 
 
 # Association tables
@@ -195,6 +266,56 @@ class User(TimestampedModel):
     )
 
 
+class Geography(TimestampedModel):
+    """A node in the Country / Region / State / LGA / Ward / Community tree.
+
+    Reference data shared across organisations rather than tenant-scoped: the
+    administrative map of a country is the same for every organisation working
+    in it, and duplicating it per tenant would make comparison across tenants
+    impossible.
+    """
+
+    # Not "geography": PostGIS defines a type of that name, and a table would
+    # collide with it. Do not rename this to match the class.
+    __tablename__ = "geographic_area"
+
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("geographic_area.id", ondelete="RESTRICT"), nullable=True
+    )
+    level: Mapped[GeographyLevel] = mapped_column(
+        SQLEnum(GeographyLevel, values_callable=_enum_values), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    # Administrative code where one exists, such as an ISO country code or a
+    # national statistics office identifier.
+    code: Mapped[Optional[str]] = mapped_column(String(32))
+    centroid: Mapped[Optional[Any]] = mapped_column(Geometry("POINT", srid=4326), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Relationships
+    parent: Mapped[Optional["Geography"]] = relationship(
+        remote_side="Geography.id", back_populates="children"
+    )
+    children: Mapped[list["Geography"]] = relationship(back_populates="parent")
+    projects: Mapped[list["Project"]] = relationship(back_populates="geography")
+    locations: Mapped[list["Location"]] = relationship(back_populates="geography")
+
+    __table_args__ = (
+        UniqueConstraint("parent_id", "level", "name", name="uq_geography_parent_level_name"),
+        # Postgres treats NULLs as distinct, so the constraint above does not
+        # cover root nodes. This closes that gap for countries.
+        Index(
+            "uq_geographic_area_root_level_name",
+            "level",
+            "name",
+            unique=True,
+            postgresql_where=text("parent_id IS NULL"),
+        ),
+        Index("idx_geographic_area_parent_id", "parent_id"),
+        Index("idx_geographic_area_level", "level"),
+    )
+
+
 class ThematicArea(TimestampedModel):
     """Thematic stream configuration."""
 
@@ -271,24 +392,106 @@ class Project(TimestampedModel):
     end_date: Mapped[Optional[date]] = mapped_column(Date)
     budget: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2))
     budget_currency: Mapped[Optional[str]] = mapped_column(String(3))
-    status: Mapped[str] = mapped_column(String(50), default="active", nullable=False)
-    location_state: Mapped[Optional[str]] = mapped_column(String(50))
-    location_lga: Mapped[Optional[str]] = mapped_column(String(100))
-    location_community: Mapped[Optional[str]] = mapped_column(String(100))
+    status: Mapped[ProjectStatus] = mapped_column(
+        SQLEnum(ProjectStatus, values_callable=_enum_values),
+        default=ProjectStatus.PROPOSED,
+        nullable=False,
+    )
+    # Replaces the former location_state / location_lga / location_community
+    # strings, which could not be filtered on reliably or rolled up.
+    geography_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("geographic_area.id"), nullable=True
+    )
     implementing_org: Mapped[Optional[str]] = mapped_column(String(255))
+    funding_source: Mapped[Optional[str]] = mapped_column(String(255))
+    sector: Mapped[Optional[str]] = mapped_column(String(100))
     target_beneficiaries: Mapped[Optional[int]] = mapped_column(Integer)
+    actual_completion: Mapped[Optional[date]] = mapped_column(Date)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
     # Relationships
     organisation: Mapped["Organisation"] = relationship(back_populates="projects")
     programme: Mapped[Optional["Programme"]] = relationship(back_populates="projects")
+    geography: Mapped[Optional["Geography"]] = relationship(back_populates="projects")
     evidence_items: Mapped[list["Evidence"]] = relationship(back_populates="project")
     locations: Mapped[list["Location"]] = relationship(back_populates="project")
+    milestones: Mapped[list["Milestone"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+    indicators: Mapped[list["Indicator"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         UniqueConstraint("organisation_id", "code", name="uq_project_org_code"),
         Index("idx_project_org_id", "organisation_id"),
         Index("idx_project_programme_id", "programme_id"),
+        Index("idx_project_geography_id", "geography_id"),
+        Index("idx_project_status", "status"),
+    )
+
+
+class Milestone(TimestampedModel):
+    """A dated checkpoint within a project."""
+
+    __tablename__ = "milestone"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    due_date: Mapped[Optional[date]] = mapped_column(Date)
+    completed_date: Mapped[Optional[date]] = mapped_column(Date)
+    status: Mapped[MilestoneStatus] = mapped_column(
+        SQLEnum(MilestoneStatus, values_callable=_enum_values),
+        default=MilestoneStatus.PENDING,
+        nullable=False,
+    )
+    sequence: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Relationships
+    project: Mapped["Project"] = relationship(back_populates="milestones")
+
+    __table_args__ = (
+        Index("idx_milestone_project_id", "project_id"),
+        Index("idx_milestone_status", "status"),
+    )
+
+
+class Indicator(TimestampedModel):
+    """A measurable quantity a project is expected to move.
+
+    Baseline, target and current value live here so that evidence can record a
+    measurement against a named indicator rather than restating the definition
+    on every record.
+    """
+
+    __tablename__ = "indicator"
+
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False
+    )
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project.id", ondelete="CASCADE"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    unit: Mapped[Optional[str]] = mapped_column(String(50))
+    baseline_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    baseline_date: Mapped[Optional[date]] = mapped_column(Date)
+    target_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    target_date: Mapped[Optional[date]] = mapped_column(Date)
+    current_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
+    current_value_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    # Relationships
+    project: Mapped[Optional["Project"]] = relationship(back_populates="indicators")
+    evidence_items: Mapped[list["Evidence"]] = relationship(back_populates="indicator")
+
+    __table_args__ = (
+        Index("idx_indicator_organisation_id", "organisation_id"),
+        Index("idx_indicator_project_id", "project_id"),
     )
 
 
@@ -302,9 +505,11 @@ class Location(TimestampedModel):
     project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("project.id"), nullable=True
     )
-    state: Mapped[Optional[str]] = mapped_column(String(50))
-    lga: Mapped[Optional[str]] = mapped_column(String(100))
-    community: Mapped[Optional[str]] = mapped_column(String(100))
+    # The administrative area this point falls within. A Location is a
+    # specific place; a Geography is the area it sits inside.
+    geography_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("geographic_area.id"), nullable=True
+    )
     latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(9, 6))
     longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(9, 6))
     geom: Mapped[Optional[Any]] = mapped_column(Geometry("POINT", srid=4326), nullable=True)
@@ -312,11 +517,12 @@ class Location(TimestampedModel):
 
     # Relationships
     project: Mapped[Optional["Project"]] = relationship(back_populates="locations")
+    geography: Mapped[Optional["Geography"]] = relationship(back_populates="locations")
     evidence_items: Mapped[list["Evidence"]] = relationship(back_populates="location")
 
     __table_args__ = (
         Index("idx_location_project_id", "project_id"),
-        Index("idx_location_state", "state"),
+        Index("idx_location_geography_id", "geography_id"),
     )
 
 
@@ -367,6 +573,26 @@ class Evidence(TimestampedModel):
     thematic_area_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("thematic_area.id"), nullable=True
     )
+    # Evidence can be placed on the map without belonging to a project site.
+    geography_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("geographic_area.id"), nullable=True
+    )
+    indicator_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("indicator.id"), nullable=True
+    )
+
+    # Permanent, human-readable identifier. Generated by the database so it is
+    # assigned exactly once, at insert, and cannot drift: an evidence record
+    # must stay citable by the same reference for its whole life.
+    reference: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        unique=True,
+        server_default=text(
+            "'EV-' || to_char(now(), 'YYYY') || '-' "
+            "|| lpad(nextval('evidence_reference_seq')::text, 6, '0')"
+        ),
+    )
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
@@ -381,6 +607,10 @@ class Evidence(TimestampedModel):
     beneficiaries: Mapped[Optional[int]] = mapped_column(Integer)
     outcome: Mapped[Optional[str]] = mapped_column(Text)
     confidence_level: Mapped[Optional[int]] = mapped_column(Integer)
+    # The measurement this record contributes, against indicator_id. The
+    # indicator holds the definition, baseline and target; evidence holds an
+    # observation of it at a point in time.
+    measured_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4))
 
     # Files and media
     document_url: Mapped[Optional[str]] = mapped_column(String(500))
@@ -414,6 +644,8 @@ class Evidence(TimestampedModel):
     project: Mapped[Optional["Project"]] = relationship(back_populates="evidence_items")
     location: Mapped[Optional["Location"]] = relationship(back_populates="evidence_items")
     source: Mapped["Source"] = relationship(back_populates="evidence_items")
+    geography: Mapped[Optional["Geography"]] = relationship()
+    indicator: Mapped[Optional["Indicator"]] = relationship(back_populates="evidence_items")
     thematic_area: Mapped[Optional["ThematicArea"]] = relationship(back_populates="evidence_items")
     stories: Mapped[list["Story"]] = relationship(back_populates="evidence")
     audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="evidence")
@@ -473,8 +705,13 @@ class Question(TimestampedModel):
     )
     category: Mapped[Optional[str]] = mapped_column(String(100))
     question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    # Free text as the submitter typed it. geography_id is the resolved area,
+    # set during triage; keeping both preserves what was actually said.
     location_state: Mapped[Optional[str]] = mapped_column(String(50))
     location_lga: Mapped[Optional[str]] = mapped_column(String(100))
+    geography_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("geographic_area.id"), nullable=True
+    )
     language: Mapped[str] = mapped_column(String(5), default="en", nullable=False)
     is_anonymous: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     submitter_email: Mapped[Optional[str]] = mapped_column(String(255))

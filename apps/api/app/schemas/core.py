@@ -7,7 +7,15 @@ from typing import Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.core import EvidenceStatus, IntegritySignalPriority, QuestionStatus, ReadinessStatus
+from app.models.core import (
+    EvidenceStatus,
+    GeographyLevel,
+    IntegritySignalPriority,
+    MilestoneStatus,
+    ProjectStatus,
+    QuestionStatus,
+    ReadinessStatus,
+)
 
 
 class OrganisationBase(BaseModel):
@@ -68,6 +76,48 @@ class ThematicAreaResponse(ThematicAreaBase):
     is_active: bool
 
 
+class GeographyBase(BaseModel):
+    """Base geography schema."""
+
+    name: str = Field(..., min_length=1, max_length=160)
+    level: GeographyLevel
+    code: Optional[str] = Field(None, max_length=32)
+
+
+class GeographyCreate(GeographyBase):
+    """Geography creation schema."""
+
+    parent_id: Optional[uuid.UUID] = None
+    latitude: Optional[Decimal] = Field(None, ge=-90, le=90)
+    longitude: Optional[Decimal] = Field(None, ge=-180, le=180)
+
+
+class GeographyUpdate(BaseModel):
+    """Geography update schema.
+
+    Level and parent are absent: moving a node between tiers would silently
+    reinterpret every project and evidence record beneath it.
+    """
+
+    name: Optional[str] = Field(None, min_length=1, max_length=160)
+    code: Optional[str] = Field(None, max_length=32)
+    latitude: Optional[Decimal] = Field(None, ge=-90, le=90)
+    longitude: Optional[Decimal] = Field(None, ge=-180, le=180)
+    is_active: Optional[bool] = None
+
+
+class GeographyResponse(GeographyBase):
+    """Geography response schema."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    parent_id: Optional[uuid.UUID] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
 class ProgrammeBase(BaseModel):
     """Base programme schema."""
 
@@ -106,13 +156,14 @@ class ProjectBase(BaseModel):
     description: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    actual_completion: Optional[date] = None
     budget: Optional[Decimal] = None
     budget_currency: Optional[str] = Field(None, min_length=3, max_length=3)
-    location_state: Optional[str] = None
-    location_lga: Optional[str] = None
-    location_community: Optional[str] = None
-    implementing_org: Optional[str] = None
-    target_beneficiaries: Optional[int] = None
+    geography_id: Optional[uuid.UUID] = None
+    implementing_org: Optional[str] = Field(None, max_length=255)
+    funding_source: Optional[str] = Field(None, max_length=255)
+    sector: Optional[str] = Field(None, max_length=100)
+    target_beneficiaries: Optional[int] = Field(None, ge=0)
 
 
 class ProjectCreate(ProjectBase):
@@ -120,6 +171,36 @@ class ProjectCreate(ProjectBase):
 
     organisation_id: uuid.UUID
     programme_id: Optional[uuid.UUID] = None
+
+
+class ProjectUpdate(BaseModel):
+    """Project update schema.
+
+    Status is absent: it moves through the dedicated status endpoint, which
+    enforces the completion rules.
+    """
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    programme_id: Optional[uuid.UUID] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    actual_completion: Optional[date] = None
+    budget: Optional[Decimal] = None
+    budget_currency: Optional[str] = Field(None, min_length=3, max_length=3)
+    geography_id: Optional[uuid.UUID] = None
+    implementing_org: Optional[str] = Field(None, max_length=255)
+    funding_source: Optional[str] = Field(None, max_length=255)
+    sector: Optional[str] = Field(None, max_length=100)
+    target_beneficiaries: Optional[int] = Field(None, ge=0)
+
+
+class ProjectStatusChange(BaseModel):
+    """Request to move a project to a new lifecycle state."""
+
+    status: ProjectStatus
+    actual_completion: Optional[date] = None
+    note: Optional[str] = Field(None, max_length=1000)
 
 
 class ProjectResponse(ProjectBase):
@@ -130,7 +211,93 @@ class ProjectResponse(ProjectBase):
     id: uuid.UUID
     organisation_id: uuid.UUID
     programme_id: Optional[uuid.UUID] = None
-    status: str
+    status: ProjectStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class MilestoneBase(BaseModel):
+    """Base milestone schema."""
+
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    due_date: Optional[date] = None
+    sequence: int = Field(0, ge=0)
+
+
+class MilestoneCreate(MilestoneBase):
+    """Milestone creation schema."""
+
+
+class MilestoneUpdate(BaseModel):
+    """Milestone update schema."""
+
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    due_date: Optional[date] = None
+    completed_date: Optional[date] = None
+    status: Optional[MilestoneStatus] = None
+    sequence: Optional[int] = Field(None, ge=0)
+
+
+class MilestoneResponse(MilestoneBase):
+    """Milestone response schema."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    completed_date: Optional[date] = None
+    status: MilestoneStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class IndicatorBase(BaseModel):
+    """Base indicator schema."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    unit: Optional[str] = Field(None, max_length=50)
+    baseline_value: Optional[Decimal] = None
+    baseline_date: Optional[date] = None
+    target_value: Optional[Decimal] = None
+    target_date: Optional[date] = None
+
+
+class IndicatorCreate(IndicatorBase):
+    """Indicator creation schema."""
+
+    organisation_id: uuid.UUID
+    project_id: Optional[uuid.UUID] = None
+
+
+class IndicatorUpdate(BaseModel):
+    """Indicator update schema.
+
+    current_value is absent: it is derived from approved evidence rather than
+    set by hand, so that a reported figure always traces to a record.
+    """
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    unit: Optional[str] = Field(None, max_length=50)
+    baseline_value: Optional[Decimal] = None
+    baseline_date: Optional[date] = None
+    target_value: Optional[Decimal] = None
+    target_date: Optional[date] = None
+
+
+class IndicatorResponse(IndicatorBase):
+    """Indicator response schema."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    project_id: Optional[uuid.UUID] = None
+    current_value: Optional[Decimal] = None
+    current_value_date: Optional[date] = None
     created_at: datetime
     updated_at: datetime
 
@@ -183,6 +350,9 @@ class EvidenceCreate(EvidenceBase):
     project_id: Optional[uuid.UUID] = None
     location_id: Optional[uuid.UUID] = None
     thematic_area_id: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    indicator_id: Optional[uuid.UUID] = None
+    measured_value: Optional[Decimal] = None
 
 
 class EvidenceUpdate(BaseModel):
@@ -203,6 +373,9 @@ class EvidenceUpdate(BaseModel):
     project_id: Optional[uuid.UUID] = None
     location_id: Optional[uuid.UUID] = None
     thematic_area_id: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    indicator_id: Optional[uuid.UUID] = None
+    measured_value: Optional[Decimal] = None
     document_url: Optional[str] = Field(None, max_length=500)
     tags: Optional[List[str]] = None
     metadata_json: Optional[dict[str, Any]] = None
@@ -214,11 +387,16 @@ class EvidenceResponse(EvidenceBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    # Permanent citable identifier, assigned once at creation.
+    reference: str
     organisation_id: uuid.UUID
     source_id: uuid.UUID
     project_id: Optional[uuid.UUID] = None
     location_id: Optional[uuid.UUID] = None
     thematic_area_id: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    indicator_id: Optional[uuid.UUID] = None
+    measured_value: Optional[Decimal] = None
     status: EvidenceStatus
     verification_status: str
     approval_status: str

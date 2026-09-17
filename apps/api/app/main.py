@@ -8,7 +8,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api import auth, evidence, health, organisations, questions, search, stories, users
+from app.api import (
+    auth,
+    evidence,
+    geography,
+    health,
+    organisations,
+    questions,
+    search,
+    stories,
+    users,
+)
 from app.config import settings
 from app.rate_limit import RateLimitExceeded, limiter, rate_limit_exceeded_handler
 
@@ -89,6 +99,7 @@ app.include_router(
     prefix="/api/v1/organisations",
     tags=["Organisations"],
 )
+app.include_router(geography.router, prefix="/api/v1/geography", tags=["Geography"])
 app.include_router(evidence.router, prefix="/api/v1/evidence", tags=["Evidence"])
 app.include_router(stories.router, prefix="/api/v1/stories", tags=["Stories"])
 app.include_router(questions.router, prefix="/api/v1/questions", tags=["Questions"])

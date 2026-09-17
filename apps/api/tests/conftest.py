@@ -26,6 +26,8 @@ from app.main import app  # noqa: E402
 from app.models import (  # noqa: E402
     Base,
     Evidence,
+    Geography,
+    GeographyLevel,
     Organisation,
     Role,
     Source,
@@ -191,6 +193,32 @@ def make_story(db: Session, evidence: Evidence, **overrides: Any) -> Story:
     db.commit()
     db.refresh(story)
     return story
+
+
+def make_area(
+    db: Session,
+    level: GeographyLevel = GeographyLevel.COUNTRY,
+    parent: Optional[Geography] = None,
+    name: Optional[str] = None,
+) -> Geography:
+    """Create a persisted geographic area."""
+    area = Geography(
+        level=level,
+        name=name or f"Area {uuid.uuid4().hex[:8]}",
+        parent_id=parent.id if parent is not None else None,
+    )
+    db.add(area)
+    db.commit()
+    db.refresh(area)
+    return area
+
+
+def make_area_chain(db: Session) -> Dict[str, Geography]:
+    """Create a country / state / LGA chain, returned by level name."""
+    country = make_area(db, GeographyLevel.COUNTRY)
+    state = make_area(db, GeographyLevel.STATE, parent=country)
+    lga = make_area(db, GeographyLevel.LGA, parent=state)
+    return {"country": country, "state": state, "lga": lga}
 
 
 def make_platform_admin(db: Session) -> User:

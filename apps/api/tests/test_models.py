@@ -55,6 +55,27 @@ def test_dates_round_trip_as_dates_not_strings(db: Session, organisation: Organi
     assert evidence.evidence_date == date(2026, 3, 1)
 
 
+def test_evidence_receives_a_permanent_reference(db: Session, organisation: Organisation):
+    """Spec section 10 requires every evidence record to be permanently citable."""
+    first = make_evidence(db, organisation)
+    second = make_evidence(db, organisation)
+
+    assert first.reference.startswith("EV-")
+    assert first.reference != second.reference
+
+
+def test_the_evidence_reference_survives_an_update(db: Session, organisation: Organisation):
+    """A citation that changed when the record was edited would be useless."""
+    evidence = make_evidence(db, organisation)
+    original = evidence.reference
+
+    evidence.title = "Renamed after publication"
+    db.commit()
+    db.refresh(evidence)
+
+    assert evidence.reference == original
+
+
 def test_budget_keeps_decimal_precision(db: Session, organisation: Organisation):
     """Money stored as Integer silently lost minor units."""
     programme = Programme(
