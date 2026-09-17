@@ -1,18 +1,21 @@
 """Baseline schema.
 
-Squashes the Phase 1 baseline and the Phase 2 additions into one revision.
-Safe because this branch has never been deployed, so no database holds the
-intermediate shape. Regenerated after a constraint naming convention was
-added, without which Alembic emitted drop_constraint(None, ...) for
-Postgres-assigned names and the downgrade could not run.
+One revision for the whole Phase 1 and Phase 2 schema. Safe to squash because
+this branch has never been deployed, so no database holds an intermediate
+shape.
 
-Note the administrative hierarchy table is geographic_area, not geography:
-PostGIS already defines a type called geography and a table of that name
-collides with it.
+Two things autogenerate cannot be trusted with here: it does not emit
+sequences, and without the constraint naming convention on the metadata it
+emits drop_constraint(None, ...) for Postgres-assigned names, which cannot
+run. Both are handled explicitly.
 
-Revision ID: c6f5b1b67bc8
+The administrative hierarchy table is geographic_area, not geography: PostGIS
+already defines a type called geography and a table of that name collides
+with it.
+
+Revision ID: 264ed83a95a5
 Revises: 
-Create Date: 2026-09-17 08:20:22.463359
+Create Date: 2026-09-17 12:33:53.321574
 
 """
 from typing import Sequence, Union
@@ -22,7 +25,7 @@ from geoalchemy2 import Geometry
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'c6f5b1b67bc8'
+revision: str = '264ed83a95a5'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -222,11 +225,21 @@ def upgrade() -> None:
     op.create_table('source',
     sa.Column('organisation_id', sa.UUID(), nullable=False),
     sa.Column('name', sa.String(length=255), nullable=False),
-    sa.Column('source_type', sa.String(length=50), nullable=False),
+    sa.Column('source_type', sa.Enum('official_document', 'government_data', 'research', 'field_report', 'interview', 'media_report', 'dataset', 'photograph', 'video', 'audio', 'user_submission', 'institutional_source', name='sourcetype'), nullable=False),
     sa.Column('url', sa.String(length=500), nullable=True),
     sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('credibility_score', sa.Integer(), nullable=False),
-    sa.Column('verified', sa.Boolean(), nullable=False),
+    sa.Column('publisher', sa.String(length=255), nullable=True),
+    sa.Column('author', sa.String(length=255), nullable=True),
+    sa.Column('publication_date', sa.Date(), nullable=True),
+    sa.Column('document_url', sa.String(length=500), nullable=True),
+    sa.Column('document_hash', sa.String(length=128), nullable=True),
+    sa.Column('provenance', sa.Text(), nullable=True),
+    sa.Column('verification_state', sa.Enum('unverified', 'in_review', 'verified', 'disputed', 'rejected', name='verificationstate'), nullable=False),
+    sa.Column('reliability', sa.Enum('unknown', 'low', 'moderate', 'high', name='sourcereliability'), nullable=False),
+    sa.Column('reliability_rationale', sa.Text(), nullable=True),
+    sa.Column('reviewed_by', sa.UUID(), nullable=True),
+    sa.Column('review_date', sa.Date(), nullable=True),
+    sa.Column('next_review_date', sa.Date(), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('metadata_json', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
     sa.Column('id', sa.UUID(), nullable=False),
@@ -235,10 +248,12 @@ def upgrade() -> None:
     sa.Column('created_by', sa.UUID(), nullable=True),
     sa.Column('updated_by', sa.UUID(), nullable=True),
     sa.ForeignKeyConstraint(['organisation_id'], ['organisation.id'], name=op.f('fk_source_organisation_id_organisation')),
+    sa.ForeignKeyConstraint(['reviewed_by'], ['user.id'], name=op.f('fk_source_reviewed_by_user')),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_source'))
     )
     op.create_index('idx_source_organisation_id', 'source', ['organisation_id'], unique=False)
     op.create_index('idx_source_type', 'source', ['source_type'], unique=False)
+    op.create_index('idx_source_verification_state', 'source', ['verification_state'], unique=False)
     op.create_table('user_organisation',
     sa.Column('user_id', sa.UUID(), nullable=False),
     sa.Column('organisation_id', sa.UUID(), nullable=False),
@@ -482,6 +497,7 @@ def downgrade() -> None:
     op.drop_table('project')
     op.drop_table('programme_thematic')
     op.drop_table('user_organisation')
+    op.drop_index('idx_source_verification_state', table_name='source')
     op.drop_index('idx_source_type', table_name='source')
     op.drop_index('idx_source_organisation_id', table_name='source')
     op.drop_table('source')
@@ -524,5 +540,8 @@ def downgrade() -> None:
         "projectstatus",
         "milestonestatus",
         "geographylevel",
+        "sourcetype",
+        "verificationstate",
+        "sourcereliability",
     ):
         op.execute(f"DROP TYPE IF EXISTS {enum_name}")

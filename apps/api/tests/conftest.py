@@ -31,6 +31,7 @@ from app.models import (  # noqa: E402
     Organisation,
     Role,
     Source,
+    SourceType,
     Story,
     User,
     user_organisation,
@@ -148,7 +149,7 @@ def make_source(db: Session, organisation: Organisation) -> Source:
     source = Source(
         organisation_id=organisation.id,
         name=f"Source {uuid.uuid4().hex[:8]}",
-        source_type="official_document",
+        source_type=SourceType.OFFICIAL_DOCUMENT,
     )
     db.add(source)
     db.commit()

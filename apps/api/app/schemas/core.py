@@ -15,6 +15,9 @@ from app.models.core import (
     ProjectStatus,
     QuestionStatus,
     ReadinessStatus,
+    SourceReliability,
+    SourceType,
+    VerificationState,
 )
 
 
@@ -306,15 +309,52 @@ class SourceBase(BaseModel):
     """Base source schema."""
 
     name: str = Field(..., min_length=1, max_length=255)
-    source_type: str = Field(..., min_length=1, max_length=50)
-    url: Optional[str] = None
+    source_type: SourceType
+    url: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = None
+    publisher: Optional[str] = Field(None, max_length=255)
+    author: Optional[str] = Field(None, max_length=255)
+    publication_date: Optional[date] = None
+    document_url: Optional[str] = Field(None, max_length=500)
+    document_hash: Optional[str] = Field(None, max_length=128)
+    provenance: Optional[str] = None
 
 
 class SourceCreate(SourceBase):
     """Source creation schema."""
 
     organisation_id: uuid.UUID
+
+
+class SourceUpdate(BaseModel):
+    """Source update schema.
+
+    Verification state and reliability are absent: both are review outcomes
+    and move through the dedicated review endpoint, which records who decided
+    and why.
+    """
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    source_type: Optional[SourceType] = None
+    url: Optional[str] = Field(None, max_length=500)
+    description: Optional[str] = None
+    publisher: Optional[str] = Field(None, max_length=255)
+    author: Optional[str] = Field(None, max_length=255)
+    publication_date: Optional[date] = None
+    document_url: Optional[str] = Field(None, max_length=500)
+    document_hash: Optional[str] = Field(None, max_length=128)
+    provenance: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class SourceReview(BaseModel):
+    """Record the outcome of reviewing a source."""
+
+    verification_state: VerificationState
+    reliability: SourceReliability = SourceReliability.UNKNOWN
+    # Required so a classification is never an unexplained judgement.
+    rationale: str = Field(..., min_length=1)
+    next_review_date: Optional[date] = None
 
 
 class SourceResponse(SourceBase):
@@ -324,8 +364,12 @@ class SourceResponse(SourceBase):
 
     id: uuid.UUID
     organisation_id: uuid.UUID
-    credibility_score: int
-    verified: bool
+    verification_state: VerificationState
+    reliability: SourceReliability
+    reliability_rationale: Optional[str] = None
+    reviewed_by: Optional[uuid.UUID] = None
+    review_date: Optional[date] = None
+    next_review_date: Optional[date] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime

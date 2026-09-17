@@ -16,6 +16,7 @@ from app.api import (
     organisations,
     questions,
     search,
+    sources,
     stories,
     users,
 )
@@ -100,6 +101,7 @@ app.include_router(
     tags=["Organisations"],
 )
 app.include_router(geography.router, prefix="/api/v1/geography", tags=["Geography"])
+app.include_router(sources.router, prefix="/api/v1/sources", tags=["Sources"])
 app.include_router(evidence.router, prefix="/api/v1/evidence", tags=["Evidence"])
 app.include_router(stories.router, prefix="/api/v1/stories", tags=["Stories"])
 app.include_router(questions.router, prefix="/api/v1/questions", tags=["Questions"])

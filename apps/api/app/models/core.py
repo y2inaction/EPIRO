@@ -127,6 +127,51 @@ class MilestoneStatus(str, Enum):
     MISSED = "missed"
 
 
+class SourceType(str, Enum):
+    """Kinds of source the registry accepts (spec section 11)."""
+
+    OFFICIAL_DOCUMENT = "official_document"
+    GOVERNMENT_DATA = "government_data"
+    RESEARCH = "research"
+    FIELD_REPORT = "field_report"
+    INTERVIEW = "interview"
+    MEDIA_REPORT = "media_report"
+    DATASET = "dataset"
+    PHOTOGRAPH = "photograph"
+    VIDEO = "video"
+    AUDIO = "audio"
+    USER_SUBMISSION = "user_submission"
+    INSTITUTIONAL_SOURCE = "institutional_source"
+
+
+class VerificationState(str, Enum):
+    """Transparent verification states.
+
+    There is no "true" here by design: spec section 11 forbids automatically
+    labelling a source true, so the states describe how far review has got and
+    what it found, never that the content is fact.
+    """
+
+    UNVERIFIED = "unverified"
+    IN_REVIEW = "in_review"
+    VERIFIED = "verified"
+    DISPUTED = "disputed"
+    REJECTED = "rejected"
+
+
+class SourceReliability(str, Enum):
+    """How much weight a source's track record earns it.
+
+    A stated classification with a written rationale, rather than the numeric
+    score it replaces, which had no defined methodology.
+    """
+
+    UNKNOWN = "unknown"
+    LOW = "low"
+    MODERATE = "moderate"
+    HIGH = "high"
+
+
 class GeographyLevel(str, Enum):
     """Tiers of the administrative hierarchy."""
 
@@ -535,11 +580,47 @@ class Source(TimestampedModel):
         UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    source_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_type: Mapped[SourceType] = mapped_column(
+        SQLEnum(SourceType, values_callable=_enum_values), nullable=False
+    )
     url: Mapped[Optional[str]] = mapped_column(String(500))
     description: Mapped[Optional[str]] = mapped_column(Text)
-    credibility_score: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
-    verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Who published it, as distinct from the tenant that recorded it.
+    publisher: Mapped[Optional[str]] = mapped_column(String(255))
+    author: Mapped[Optional[str]] = mapped_column(String(255))
+    publication_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    # Provenance
+    document_url: Mapped[Optional[str]] = mapped_column(String(500))
+    # Hash of the stored document, so a later copy can be shown to be the same
+    # artefact that was reviewed.
+    document_hash: Mapped[Optional[str]] = mapped_column(String(128))
+    provenance: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Governance. There is deliberately no boolean "verified" and no numeric
+    # credibility score: spec section 11 requires transparent states rather
+    # than a source being labelled true, and section 7 rules out unexplained
+    # scores.
+    verification_state: Mapped[VerificationState] = mapped_column(
+        SQLEnum(VerificationState, values_callable=_enum_values),
+        default=VerificationState.UNVERIFIED,
+        nullable=False,
+    )
+    reliability: Mapped[SourceReliability] = mapped_column(
+        SQLEnum(SourceReliability, values_callable=_enum_values),
+        default=SourceReliability.UNKNOWN,
+        nullable=False,
+    )
+    reliability_rationale: Mapped[Optional[str]] = mapped_column(Text)
+    reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+    review_date: Mapped[Optional[date]] = mapped_column(Date)
+    # When this assessment should be revisited. A source verified years ago is
+    # not thereby still verified.
+    next_review_date: Mapped[Optional[date]] = mapped_column(Date)
+
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
@@ -550,6 +631,7 @@ class Source(TimestampedModel):
     __table_args__ = (
         Index("idx_source_organisation_id", "organisation_id"),
         Index("idx_source_type", "source_type"),
+        Index("idx_source_verification_state", "verification_state"),
     )
 
 
