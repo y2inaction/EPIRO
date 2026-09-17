@@ -26,6 +26,14 @@ EVIDENCE_VERIFIERS = frozenset({Role.VERIFIER, Role.EVIDENCE_MANAGER})
 EVIDENCE_MANAGERS = frozenset({Role.EVIDENCE_MANAGER})
 APPROVERS = frozenset({Role.APPROVER, Role.EXECUTIVE})
 ORG_ADMINS = frozenset({Role.EXECUTIVE})
+# Lifecycle decisions about a programme or project: who may declare one
+# complete, suspended or archived.
+PROGRAMME_MANAGERS = frozenset({Role.EVIDENCE_MANAGER, Role.EXECUTIVE})
+# Day-to-day recording against a project, including field staff reporting
+# progress they observed.
+PROJECT_EDITORS = frozenset(
+    {Role.EVIDENCE_MANAGER, Role.EXECUTIVE, Role.RESEARCHER, Role.FIELD_OFFICER}
+)
 PUBLISHERS = frozenset({Role.CONTENT_MANAGER, Role.EDITOR})
 CONTENT_AUTHORS = frozenset({Role.CONTENT_MANAGER, Role.EDITOR, Role.TRANSLATOR})
 QUESTION_RESPONDERS = frozenset(

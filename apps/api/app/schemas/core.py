@@ -167,6 +167,22 @@ class ProgrammeCreate(ProgrammeBase):
     organisation_id: uuid.UUID
 
 
+class ProgrammeUpdate(BaseModel):
+    """Programme update schema.
+
+    Code is absent: it is the identifier projects are filed under within an
+    organisation.
+    """
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    budget: Optional[Decimal] = None
+    budget_currency: Optional[str] = Field(None, min_length=3, max_length=3)
+    status: Optional[str] = Field(None, max_length=50)
+
+
 class ProgrammeResponse(ProgrammeBase):
     """Programme response schema."""
 
