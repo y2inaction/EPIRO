@@ -1,17 +1,29 @@
 """Health endpoint tests."""
 
-
-def test_sample(sample_data):
-    """Test sample data fixture."""
-    assert sample_data["name"] == "Test"
-    assert sample_data["value"] == 123
+from fastapi.testclient import TestClient
 
 
-def test_basic_assertion():
-    """Test basic assertion."""
-    assert True
+def test_health_reports_ok(client: TestClient):
+    """The basic health probe answers without touching the database."""
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
 
 
-def test_simple_math():
-    """Test simple math."""
-    assert 1 + 1 == 2
+def test_liveness_probe_reports_alive(client: TestClient):
+    response = client.get("/health/live")
+    assert response.status_code == 200
+    assert response.json() == {"status": "alive"}
+
+
+def test_readiness_probe_reports_database_reachable(client: TestClient):
+    """Readiness must actually exercise the database connection."""
+    response = client.get("/health/ready")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ready"
+
+
+def test_root_describes_the_service(client: TestClient):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.json()["name"] == "EPIRO API"

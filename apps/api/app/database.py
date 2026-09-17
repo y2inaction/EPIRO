@@ -2,17 +2,20 @@
 
 from typing import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import NullPool
 
 from app.config import settings
 
-# Create engine
+# Extensions are created by migration, not on every connection: issuing DDL
+# from a connect hook required the application role to be a superuser and,
+# with a pool, ran on every checkout.
 engine = create_engine(
     settings.database_url,
     echo=settings.database_echo,
-    poolclass=NullPool,
+    pool_pre_ping=True,
+    pool_size=settings.database_pool_size,
+    max_overflow=settings.database_max_overflow,
 )
 
 # Session factory
@@ -31,12 +34,3 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
-
-
-@event.listens_for(engine, "connect")
-def receive_connect(dbapi_conn, connection_record):
-    """Enable PostGIS when connecting."""
-    cursor = dbapi_conn.cursor()
-    cursor.execute("CREATE EXTENSION IF NOT EXISTS postgis")
-    cursor.execute("CREATE EXTENSION IF NOT EXISTS pgvector")
-    cursor.close()

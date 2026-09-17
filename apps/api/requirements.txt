@@ -17,6 +17,11 @@ pydantic-settings==2.1.0
 # Authentication & Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+# passlib 1.7.4 probes bcrypt via a >72-byte test hash. bcrypt >= 4.1 removed
+# __about__ and bcrypt 5.x raises on over-length input instead of truncating,
+# so that probe throws and every hash_password call fails. Pin until passlib
+# is replaced.
+bcrypt==4.0.1
 python-multipart==0.0.6
 PyJWT==2.14.0
 

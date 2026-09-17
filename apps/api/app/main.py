@@ -10,8 +10,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import auth, evidence, health, organisations, questions, search, stories, users
 from app.config import settings
-from app.database import engine
-from app.models import Base
 
 # Configure logging
 logging.basicConfig(level=settings.log_level)
@@ -29,13 +27,8 @@ async def lifespan(app: FastAPI):
     logger.info("Starting EPIRO API")
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Debug: {settings.debug}")
-
-    # Create tables
-    try:
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables created/verified")
-    except Exception as e:
-        logger.error(f"Error creating database tables: {e}")
+    # Schema is owned by Alembic. The application never creates tables: doing
+    # so silently diverged deployed databases from the migration history.
 
     yield
 

@@ -32,15 +32,15 @@ jobs:
 
       - name: Lint with flake8
         working-directory: ./apps/api
-        run: flake8 app/ --count --show-source --statistics
+        run: flake8 app/ tests/ --count --show-source --statistics
 
       - name: Format check with black
         working-directory: ./apps/api
-        run: black --check app/
+        run: black --check app/ tests/
 
       - name: Check imports with isort
         working-directory: ./apps/api
-        run: isort --check-only app/
+        run: isort --check-only app/ tests/
 
   type-check:
     name: Type Check
@@ -112,8 +112,11 @@ jobs:
         working-directory: ./apps/api
         env:
           DATABASE_URL: postgresql://epiro:epiro_password@localhost:5432/epiro
+          # Tests build and tear down their own schema, so they run against a
+          # dedicated URL rather than whatever the app is configured for.
+          TEST_DATABASE_URL: postgresql://epiro:epiro_password@localhost:5432/epiro
           REDIS_URL: redis://localhost:6379/0
-        run: pytest tests/ -v --cov=app --cov-report=xml
+        run: pytest tests/ -v --cov=app --cov-report=xml --cov-fail-under=75
 
   test-frontend:
     name: Test Frontend

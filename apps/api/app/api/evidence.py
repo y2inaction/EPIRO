@@ -6,14 +6,41 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.authorization import (
+    APPROVERS,
+    EVIDENCE_AUTHORS,
+    EVIDENCE_MANAGERS,
+    EVIDENCE_VERIFIERS,
+    PUBLISHERS,
+    AccessControl,
+    get_access,
+)
 from app.database import get_db
-from app.dependencies import get_current_user
-from app.models import Organisation, Source, User
+from app.models import Evidence, Organisation, Source
 from app.repositories.base import BaseRepository
 from app.repositories.evidence import EvidenceRepository
 from app.schemas.core import EvidenceCreate, EvidenceResponse, EvidenceUpdate
 
 router = APIRouter()
+
+
+def _get_scoped_evidence(
+    evidence_repo: EvidenceRepository,
+    evidence_id: uuid.UUID,
+    access: AccessControl,
+) -> Evidence:
+    """Load evidence the caller is entitled to see.
+
+    A record outside the caller's organisations is reported as missing so the
+    endpoint does not confirm that an id exists in another tenant.
+    """
+    evidence = evidence_repo.get_by_id(evidence_id)
+    if not evidence or not access.can_access(evidence.organisation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evidence not found",
+        )
+    return evidence
 
 
 @router.get("/", response_model=dict)
@@ -22,15 +49,17 @@ async def list_evidence(
     limit: int = Query(100, ge=1, le=1000),
     evidence_status: Optional[str] = Query(None),
     organisation_id: Optional[uuid.UUID] = Query(None),
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """List evidence with pagination."""
+    """List evidence for an organisation the caller belongs to."""
     if not organisation_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="organisation_id is required",
         )
+
+    access.require_member(organisation_id)
 
     evidence_repo = EvidenceRepository(db)
     items, total = evidence_repo.get_by_organisation(organisation_id, skip, limit)
@@ -47,30 +76,22 @@ async def list_evidence(
 @router.get("/{evidence_id}", response_model=EvidenceResponse)
 async def get_evidence(
     evidence_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
     """Get evidence by ID."""
-    evidence_repo = EvidenceRepository(db)
-    evidence = evidence_repo.get_by_id(evidence_id)
-
-    if not evidence:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evidence not found",
-        )
-
-    return evidence
+    return _get_scoped_evidence(EvidenceRepository(db), evidence_id, access)
 
 
-@router.post("/", response_model=EvidenceResponse)
+@router.post("/", response_model=EvidenceResponse, status_code=status.HTTP_201_CREATED)
 async def create_evidence(
     evidence_create: EvidenceCreate,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
     """Create new evidence."""
-    # Verify organisation exists
+    access.require_role(evidence_create.organisation_id, EVIDENCE_AUTHORS)
+
     org_repo = BaseRepository(db, Organisation)
     if not org_repo.get_by_id(evidence_create.organisation_id):
         raise HTTPException(
@@ -78,61 +99,58 @@ async def create_evidence(
             detail="Organisation not found",
         )
 
-    # Verify source exists
     source_repo = BaseRepository(db, Source)
-    if not source_repo.get_by_id(evidence_create.source_id):
+    source = source_repo.get_by_id(evidence_create.source_id)
+    if not source:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Source not found",
         )
+    # A source from another tenant must not become the provenance of this
+    # organisation's evidence.
+    if source.organisation_id != evidence_create.organisation_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Source belongs to a different organisation",
+        )
 
     evidence_repo = EvidenceRepository(db)
     evidence_data = evidence_create.model_dump()
-    evidence_data["created_by"] = current_user.id
+    evidence_data["created_by"] = access.user.id
 
-    evidence = evidence_repo.create(evidence_data)
-    return evidence
+    return evidence_repo.create(evidence_data)
 
 
 @router.put("/{evidence_id}", response_model=EvidenceResponse)
 async def update_evidence(
     evidence_id: uuid.UUID,
     evidence_update: EvidenceUpdate,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Update evidence."""
+    """Update evidence content."""
     evidence_repo = EvidenceRepository(db)
-    evidence = evidence_repo.get_by_id(evidence_id)
-
-    if not evidence:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evidence not found",
-        )
+    evidence = _get_scoped_evidence(evidence_repo, evidence_id, access)
+    access.require_role(evidence.organisation_id, EVIDENCE_AUTHORS)
 
     update_data = evidence_update.model_dump(exclude_unset=True)
-    update_data["updated_by"] = current_user.id
-    updated_evidence = evidence_repo.update(evidence_id, update_data)
+    update_data["updated_by"] = access.user.id
 
-    return updated_evidence
+    return evidence_repo.update(evidence_id, update_data)
 
 
 @router.delete("/{evidence_id}")
 async def delete_evidence(
     evidence_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
     """Delete evidence."""
     evidence_repo = EvidenceRepository(db)
+    evidence = _get_scoped_evidence(evidence_repo, evidence_id, access)
+    access.require_role(evidence.organisation_id, EVIDENCE_MANAGERS)
 
-    if not evidence_repo.delete(evidence_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evidence not found",
-        )
-
+    evidence_repo.delete(evidence_id)
     return {"message": "Evidence deleted successfully"}
 
 
@@ -140,55 +158,54 @@ async def delete_evidence(
 async def verify_evidence(
     evidence_id: uuid.UUID,
     notes: str = Query(""),
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Verify evidence."""
+    """Record verification of evidence."""
     evidence_repo = EvidenceRepository(db)
-    evidence = evidence_repo.mark_verified(evidence_id, current_user.id, notes)
+    evidence = _get_scoped_evidence(evidence_repo, evidence_id, access)
+    access.require_role(evidence.organisation_id, EVIDENCE_VERIFIERS)
 
-    if not evidence:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evidence not found",
-        )
-
-    return evidence
+    return evidence_repo.mark_verified(evidence_id, access.user.id, notes)
 
 
 @router.post("/{evidence_id}/approve", response_model=EvidenceResponse)
 async def approve_evidence(
     evidence_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Approve evidence."""
+    """Approve verified evidence for publication."""
     evidence_repo = EvidenceRepository(db)
-    evidence = evidence_repo.mark_approved(evidence_id, current_user.id)
+    evidence = _get_scoped_evidence(evidence_repo, evidence_id, access)
+    access.require_role(evidence.organisation_id, APPROVERS)
 
-    if not evidence:
+    if evidence.verification_status != "verified":
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evidence not found",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Evidence must be verified before it can be approved",
         )
 
-    return evidence
+    access.require_distinct_actor(evidence.verified_by)
+
+    return evidence_repo.mark_approved(evidence_id, access.user.id)
 
 
 @router.post("/{evidence_id}/publish", response_model=EvidenceResponse)
 async def publish_evidence(
     evidence_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Publish evidence."""
+    """Publish approved evidence."""
     evidence_repo = EvidenceRepository(db)
-    evidence = evidence_repo.publish(evidence_id)
+    evidence = _get_scoped_evidence(evidence_repo, evidence_id, access)
+    access.require_role(evidence.organisation_id, PUBLISHERS)
 
-    if not evidence:
+    if evidence.approval_status != "approved":
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evidence not found or not approved",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Evidence must be approved before it can be published",
         )
 
-    return evidence
+    return evidence_repo.publish(evidence_id)

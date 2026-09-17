@@ -174,6 +174,9 @@ class User(TimestampedModel):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Platform-level administration, distinct from the SUPER_ADMIN role, which
+    # confers full rights within one organisation only.
+    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     phone: Mapped[Optional[str]] = mapped_column(String(20))
     avatar_url: Mapped[Optional[str]] = mapped_column(String(500))
@@ -484,6 +487,11 @@ class Question(TimestampedModel):
         UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
     )
     response: Mapped[Optional[str]] = mapped_column(Text)
+    # Recorded separately from updated_by so approval can require a different
+    # person from whoever drafted the response.
+    responded_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
     response_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("user.id"), nullable=True

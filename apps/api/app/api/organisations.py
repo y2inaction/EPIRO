@@ -5,25 +5,42 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.authorization import ORG_ADMINS, AccessControl, get_access
 from app.database import get_db
-from app.dependencies import get_current_admin_user, get_current_user
-from app.models import Organisation, User
+from app.models import Organisation
 from app.repositories.base import BaseRepository
 from app.schemas.core import OrganisationCreate, OrganisationResponse, OrganisationUpdate
 
 router = APIRouter()
 
 
+def _get_scoped_organisation(
+    db: Session, organisation_id: uuid.UUID, access: AccessControl
+) -> Organisation:
+    """Load an organisation the caller belongs to."""
+    org = BaseRepository(db, Organisation).get_by_id(organisation_id)
+    if not org or not access.can_access(organisation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organisation not found",
+        )
+    return org
+
+
 @router.get("/", response_model=dict)
 async def list_organisations(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """List all organisations."""
-    org_repo = BaseRepository(db, Organisation)
-    orgs, total = org_repo.get_all(skip, limit)
+    """List the organisations the caller belongs to."""
+    query = db.query(Organisation)
+    if not access.is_platform_admin:
+        query = query.filter(Organisation.id.in_(access.organisation_ids))
+
+    total = query.count()
+    orgs = query.offset(skip).limit(limit).all()
 
     return {
         "total": total,
@@ -37,32 +54,23 @@ async def list_organisations(
 @router.get("/{organisation_id}", response_model=OrganisationResponse)
 async def get_organisation(
     organisation_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
     """Get organisation by ID."""
-    org_repo = BaseRepository(db, Organisation)
-    org = org_repo.get_by_id(organisation_id)
-
-    if not org:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Organisation not found",
-        )
-
-    return org
+    return _get_scoped_organisation(db, organisation_id, access)
 
 
-@router.post("/", response_model=OrganisationResponse)
+@router.post("/", response_model=OrganisationResponse, status_code=status.HTTP_201_CREATED)
 async def create_organisation(
     org_create: OrganisationCreate,
-    current_user: User = Depends(get_current_admin_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
     """Create a new organisation."""
-    org_repo = BaseRepository(db, Organisation)
+    access.require_platform_admin()
 
-    # Check if organisation code already exists
+    org_repo = BaseRepository(db, Organisation)
     if org_repo.exists(code=org_create.code):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -70,45 +78,38 @@ async def create_organisation(
         )
 
     org_data = org_create.model_dump()
-    org_data["created_by"] = current_user.id
+    org_data["created_by"] = access.user.id
 
-    org = org_repo.create(org_data)
-    return org
+    return org_repo.create(org_data)
 
 
 @router.put("/{organisation_id}", response_model=OrganisationResponse)
 async def update_organisation(
     organisation_id: uuid.UUID,
     org_update: OrganisationUpdate,
-    current_user: User = Depends(get_current_admin_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
     """Update organisation."""
-    org_repo = BaseRepository(db, Organisation)
-    org = org_repo.get_by_id(organisation_id)
-
-    if not org:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Organisation not found",
-        )
+    _get_scoped_organisation(db, organisation_id, access)
+    access.require_role(organisation_id, ORG_ADMINS)
 
     update_data = org_update.model_dump(exclude_unset=True)
-    update_data["updated_by"] = current_user.id
-    updated_org = org_repo.update(organisation_id, update_data)
+    update_data["updated_by"] = access.user.id
 
-    return updated_org
+    return BaseRepository(db, Organisation).update(organisation_id, update_data)
 
 
 @router.delete("/{organisation_id}")
 async def delete_organisation(
     organisation_id: uuid.UUID,
-    current_user: User = Depends(get_current_admin_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Delete organisation."""
-    org_repo = BaseRepository(db, Organisation)
+    """Delete an organisation and everything it owns."""
+    access.require_platform_admin()
 
+    org_repo = BaseRepository(db, Organisation)
     if not org_repo.delete(organisation_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

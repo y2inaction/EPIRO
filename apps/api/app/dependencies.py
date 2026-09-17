@@ -1,5 +1,6 @@
 """Dependency injection utilities."""
 
+import uuid
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
@@ -12,6 +13,8 @@ from app.security import decode_token
 
 security = HTTPBearer(auto_error=False)
 
+_UNAUTHENTICATED_HEADERS = {"WWW-Authenticate": "Bearer"}
+
 
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
@@ -22,25 +25,35 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
+            headers=_UNAUTHENTICATED_HEADERS,
         )
 
-    token = credentials.credentials
-    payload = decode_token(token)
+    payload = decode_token(credentials.credentials)
 
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
+            headers=_UNAUTHENTICATED_HEADERS,
         )
 
-    user_id = payload.get("sub")
-    if not user_id:
+    # A refresh token has a much longer lifetime and is only valid at the
+    # refresh endpoint; accepting one here would silently extend session
+    # length to the refresh window.
+    if payload.get("type") == "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="A refresh token cannot be used to authenticate a request",
+            headers=_UNAUTHENTICATED_HEADERS,
+        )
+
+    try:
+        user_id = uuid.UUID(str(payload.get("sub")))
+    except (TypeError, ValueError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
+            headers=_UNAUTHENTICATED_HEADERS,
         )
 
     user = db.query(User).filter(User.id == user_id).first()
@@ -48,7 +61,7 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
+            headers=_UNAUTHENTICATED_HEADERS,
         )
 
     if not user.is_active:
@@ -58,19 +71,3 @@ async def get_current_user(
         )
 
     return user
-
-
-async def get_current_admin_user(
-    current_user: User = Depends(get_current_user),
-) -> User:
-    """Get current user and verify admin role."""
-    # Check if user has admin role in any organisation
-    # For now, just require super_admin
-    # This will be enhanced with organisation-scoped RBAC
-    if not current_user:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
-
-    return current_user

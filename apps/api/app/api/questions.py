@@ -7,13 +7,38 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.authorization import APPROVERS, PUBLISHERS, QUESTION_RESPONDERS, AccessControl, get_access
 from app.database import get_db
-from app.dependencies import get_current_user
-from app.models import Question, QuestionStatus, User
+from app.models import Question, QuestionStatus
 from app.repositories.base import BaseRepository
 from app.schemas.core import QuestionCreate, QuestionResponse, QuestionUpdate
 
 router = APIRouter()
+
+
+def _get_scoped_question(db: Session, question_id: uuid.UUID, access: AccessControl) -> Question:
+    """Load a question the caller is entitled to see."""
+    question = BaseRepository(db, Question).get_by_id(question_id)
+    if not question or not access.can_access(question.organisation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question not found",
+        )
+    return question
+
+
+def _require_assigned_organisation(question: Question) -> uuid.UUID:
+    """Return the question's organisation, refusing unassigned questions.
+
+    A question submitted publicly has no organisation until it is triaged, and
+    there is no organisation against which to check a role until it does.
+    """
+    if question.organisation_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Question must be assigned to an organisation first",
+        )
+    return question.organisation_id
 
 
 @router.get("/", response_model=dict)
@@ -22,14 +47,17 @@ async def list_questions(
     limit: int = Query(100, ge=1, le=1000),
     status_filter: Optional[str] = Query(None),
     organisation_id: Optional[uuid.UUID] = Query(None),
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """List questions with filters."""
+    """List questions within the caller's organisations."""
     query = db.query(Question)
 
     if organisation_id:
+        access.require_member(organisation_id)
         query = query.filter(Question.organisation_id == organisation_id)
+    elif not access.is_platform_admin:
+        query = query.filter(Question.organisation_id.in_(access.organisation_ids))
 
     if status_filter:
         query = query.filter(Question.status == status_filter)
@@ -49,80 +77,56 @@ async def list_questions(
 @router.get("/{question_id}", response_model=QuestionResponse)
 async def get_question(
     question_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
     """Get question by ID."""
-    question_repo = BaseRepository(db, Question)
-    question = question_repo.get_by_id(question_id)
-
-    if not question:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Question not found",
-        )
-
-    return question
+    return _get_scoped_question(db, question_id, access)
 
 
-@router.post("/", response_model=QuestionResponse)
+@router.post("/", response_model=QuestionResponse, status_code=status.HTTP_201_CREATED)
 async def submit_question(
     question_create: QuestionCreate,
     db: Session = Depends(get_db),
 ):
     """Submit a new question (public endpoint - no auth required)."""
     question_repo = BaseRepository(db, Question)
-    question_data = question_create.model_dump()
-
-    question = question_repo.create(question_data)
-    return question
+    return question_repo.create(question_create.model_dump())
 
 
 @router.put("/{question_id}", response_model=QuestionResponse)
 async def update_question(
     question_id: uuid.UUID,
     question_update: QuestionUpdate,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Update question status or metadata."""
-    question_repo = BaseRepository(db, Question)
-    question = question_repo.get_by_id(question_id)
-
-    if not question:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Question not found",
-        )
+    """Update question triage metadata."""
+    question = _get_scoped_question(db, question_id, access)
+    access.require_role(_require_assigned_organisation(question), QUESTION_RESPONDERS)
 
     update_data = question_update.model_dump(exclude_unset=True)
-    update_data["updated_by"] = current_user.id
-    updated_question = question_repo.update(question_id, update_data)
+    update_data["updated_by"] = access.user.id
 
-    return updated_question
+    return BaseRepository(db, Question).update(question_id, update_data)
 
 
 @router.post("/{question_id}/respond", response_model=QuestionResponse)
 async def respond_to_question(
     question_id: uuid.UUID,
     response_text: str = Query(..., min_length=1),
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Respond to a question."""
-    question_repo = BaseRepository(db, Question)
-    question = question_repo.get_by_id(question_id)
-
-    if not question:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Question not found",
-        )
+    """Draft a response to a question."""
+    question = _get_scoped_question(db, question_id, access)
+    access.require_role(_require_assigned_organisation(question), QUESTION_RESPONDERS)
 
     question.response = response_text
+    question.responded_by = access.user.id
     question.response_date = datetime.now(timezone.utc)
     question.status = QuestionStatus.RESPONSE_DRAFTED
-    question.updated_by = current_user.id
+    question.updated_by = access.user.id
 
     db.commit()
     db.refresh(question)
@@ -133,18 +137,12 @@ async def respond_to_question(
 @router.post("/{question_id}/approve", response_model=QuestionResponse)
 async def approve_question_response(
     question_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Approve question response for publication."""
-    question_repo = BaseRepository(db, Question)
-    question = question_repo.get_by_id(question_id)
-
-    if not question:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Question not found",
-        )
+    """Approve a drafted response for publication."""
+    question = _get_scoped_question(db, question_id, access)
+    access.require_role(_require_assigned_organisation(question), APPROVERS)
 
     if not question.response:
         raise HTTPException(
@@ -152,9 +150,11 @@ async def approve_question_response(
             detail="Question must have a response before approval",
         )
 
+    access.require_distinct_actor(question.responded_by)
+
     question.status = QuestionStatus.APPROVED
-    question.approved_by = current_user.id
-    question.updated_by = current_user.id
+    question.approved_by = access.user.id
+    question.updated_by = access.user.id
 
     db.commit()
     db.refresh(question)
@@ -165,28 +165,22 @@ async def approve_question_response(
 @router.post("/{question_id}/publish", response_model=QuestionResponse)
 async def publish_question_response(
     question_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Publish question and response to public."""
-    question_repo = BaseRepository(db, Question)
-    question = question_repo.get_by_id(question_id)
-
-    if not question:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Question not found",
-        )
+    """Publish an approved question and response."""
+    question = _get_scoped_question(db, question_id, access)
+    access.require_role(_require_assigned_organisation(question), PUBLISHERS)
 
     if question.status != QuestionStatus.APPROVED:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Question must be approved before publishing",
         )
 
     question.is_published = True
     question.status = QuestionStatus.PUBLISHED
-    question.updated_by = current_user.id
+    question.updated_by = access.user.id
 
     db.commit()
     db.refresh(question)
@@ -197,21 +191,15 @@ async def publish_question_response(
 @router.post("/{question_id}/close", response_model=QuestionResponse)
 async def close_question(
     question_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
     """Close a question (no further responses)."""
-    question_repo = BaseRepository(db, Question)
-    question = question_repo.get_by_id(question_id)
-
-    if not question:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Question not found",
-        )
+    question = _get_scoped_question(db, question_id, access)
+    access.require_role(_require_assigned_organisation(question), QUESTION_RESPONDERS)
 
     question.status = QuestionStatus.CLOSED
-    question.updated_by = current_user.id
+    question.updated_by = access.user.id
 
     db.commit()
     db.refresh(question)

@@ -1,17 +1,34 @@
 """Story/Public information management endpoints."""
 
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.authorization import CONTENT_AUTHORS, PUBLISHERS, AccessControl, get_access
 from app.database import get_db
-from app.dependencies import get_current_user
-from app.models import Evidence, Story, User
+from app.models import Evidence, EvidenceStatus, Story
 from app.repositories.base import BaseRepository
 from app.schemas.core import StoryCreate, StoryResponse, StoryUpdate
 
 router = APIRouter()
+
+# A story may only go public once its evidence has cleared verification and
+# approval. This is the "one fact base" guarantee: nothing is published that
+# is not traceable to approved evidence.
+PUBLISHABLE_EVIDENCE_STATUSES = frozenset({EvidenceStatus.APPROVED, EvidenceStatus.PUBLISHED})
+
+
+def _get_scoped_story(db: Session, story_id: uuid.UUID, access: AccessControl) -> Story:
+    """Load a story the caller is entitled to see."""
+    story = BaseRepository(db, Story).get_by_id(story_id)
+    if not story or not access.can_access(story.organisation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Story not found",
+        )
+    return story
 
 
 @router.get("/", response_model=dict)
@@ -20,11 +37,15 @@ async def list_stories(
     limit: int = Query(100, ge=1, le=1000),
     language: str = Query("en"),
     featured_only: bool = Query(False),
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """List stories with filters."""
+    """List stories within the caller's organisations."""
     query = db.query(Story).filter(Story.language == language)
+
+    if not access.is_platform_admin:
+        query = query.filter(Story.organisation_id.in_(access.organisation_ids))
+
     if featured_only:
         query = query.filter(Story.featured.is_(True))
 
@@ -43,109 +64,95 @@ async def list_stories(
 @router.get("/{story_id}", response_model=StoryResponse)
 async def get_story(
     story_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
     """Get story by ID."""
-    story_repo = BaseRepository(db, Story)
-    story = story_repo.get_by_id(story_id)
-
-    if not story:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Story not found",
-        )
-
-    return story
+    return _get_scoped_story(db, story_id, access)
 
 
-@router.post("/", response_model=StoryResponse)
+@router.post("/", response_model=StoryResponse, status_code=status.HTTP_201_CREATED)
 async def create_story(
     story_create: StoryCreate,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
     """Create a new story from evidence."""
-    # Verify evidence exists
-    evidence_repo = BaseRepository(db, Evidence)
-    evidence = evidence_repo.get_by_id(story_create.evidence_id)
-    if not evidence:
+    evidence = BaseRepository(db, Evidence).get_by_id(story_create.evidence_id)
+    if not evidence or not access.can_access(evidence.organisation_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Evidence not found",
         )
 
-    story_repo = BaseRepository(db, Story)
+    access.require_role(evidence.organisation_id, CONTENT_AUTHORS)
+
     story_data = story_create.model_dump()
     # Tenancy follows the evidence the story is built from.
     story_data["organisation_id"] = evidence.organisation_id
-    story_data["created_by"] = current_user.id
+    story_data["created_by"] = access.user.id
 
-    story = story_repo.create(story_data)
-    return story
+    return BaseRepository(db, Story).create(story_data)
 
 
 @router.put("/{story_id}", response_model=StoryResponse)
 async def update_story(
     story_id: uuid.UUID,
     story_update: StoryUpdate,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Update story."""
-    story_repo = BaseRepository(db, Story)
-    story = story_repo.get_by_id(story_id)
-
-    if not story:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Story not found",
-        )
+    """Update story content."""
+    story = _get_scoped_story(db, story_id, access)
+    access.require_role(story.organisation_id, CONTENT_AUTHORS)
 
     update_data = story_update.model_dump(exclude_unset=True)
-    update_data["updated_by"] = current_user.id
-    updated_story = story_repo.update(story_id, update_data)
+    update_data["updated_by"] = access.user.id
 
-    return updated_story
+    return BaseRepository(db, Story).update(story_id, update_data)
 
 
 @router.delete("/{story_id}")
 async def delete_story(
     story_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
     """Delete story."""
-    story_repo = BaseRepository(db, Story)
+    story = _get_scoped_story(db, story_id, access)
+    access.require_role(story.organisation_id, PUBLISHERS)
 
-    if not story_repo.delete(story_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Story not found",
-        )
-
+    BaseRepository(db, Story).delete(story_id)
     return {"message": "Story deleted successfully"}
 
 
 @router.post("/{story_id}/publish", response_model=StoryResponse)
 async def publish_story(
     story_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Publish story to public."""
-    story_repo = BaseRepository(db, Story)
-    story = story_repo.get_by_id(story_id)
+    """Publish a story, provided its evidence has been approved."""
+    story = _get_scoped_story(db, story_id, access)
+    access.require_role(story.organisation_id, PUBLISHERS)
 
-    if not story:
+    evidence = BaseRepository(db, Evidence).get_by_id(story.evidence_id)
+    if evidence is None or evidence.status not in PUBLISHABLE_EVIDENCE_STATUSES:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Story not found",
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "A story can only be published once its supporting evidence " "has been approved"
+            ),
         )
 
-    # Update story status
+    access.require_distinct_actor(story.created_by)
+
     story.status = "published"
-    story.updated_by = current_user.id
+    story.approved_by = access.user.id
+    story.approved_date = datetime.now(timezone.utc)
+    story.published_date = datetime.now(timezone.utc)
+    story.updated_by = access.user.id
+
     db.commit()
     db.refresh(story)
 
@@ -155,21 +162,22 @@ async def publish_story(
 @router.post("/{story_id}/feature", response_model=StoryResponse)
 async def feature_story(
     story_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Mark story as featured."""
-    story_repo = BaseRepository(db, Story)
-    story = story_repo.get_by_id(story_id)
+    """Mark a published story as featured."""
+    story = _get_scoped_story(db, story_id, access)
+    access.require_role(story.organisation_id, PUBLISHERS)
 
-    if not story:
+    if story.status != "published":
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Story not found",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only a published story can be featured",
         )
 
     story.featured = True
-    story.updated_by = current_user.id
+    story.updated_by = access.user.id
+
     db.commit()
     db.refresh(story)
 

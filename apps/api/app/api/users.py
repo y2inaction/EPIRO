@@ -6,13 +6,29 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.authorization import AccessControl, get_access
 from app.database import get_db
-from app.dependencies import get_current_admin_user, get_current_user
-from app.models import User
+from app.dependencies import get_current_user
+from app.models import User, user_organisation
 from app.repositories.user import UserRepository
 from app.schemas.auth import UserResponse, UserUpdate
 
 router = APIRouter()
+
+
+def _shares_an_organisation(db: Session, access: AccessControl, user_id: uuid.UUID) -> bool:
+    """True if the target user belongs to any organisation the caller does."""
+    if not access.organisation_ids:
+        return False
+    return (
+        db.query(user_organisation)
+        .filter(
+            user_organisation.c.user_id == user_id,
+            user_organisation.c.organisation_id.in_(access.organisation_ids),
+        )
+        .first()
+        is not None
+    )
 
 
 @router.get("/me", response_model=UserResponse)
@@ -48,12 +64,13 @@ async def list_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     search: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_admin_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """List all users (admin only)."""
-    user_repo = UserRepository(db)
+    """List all users (super administrators only)."""
+    access.require_platform_admin()
 
+    user_repo = UserRepository(db)
     if search:
         users, total = user_repo.search_users(search, skip, limit)
     else:
@@ -71,13 +88,25 @@ async def list_users(
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Get user by ID."""
-    user_repo = UserRepository(db)
-    user = user_repo.get_by_id(user_id)
+    """Get a user visible to the caller.
 
+    Visible means the caller themselves, anyone sharing one of their
+    organisations, or any user when the caller is a super admin.
+    """
+    if not (
+        user_id == access.user.id
+        or access.is_platform_admin
+        or _shares_an_organisation(db, access, user_id)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    user = UserRepository(db).get_by_id(user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -91,43 +120,45 @@ async def get_user(
 async def update_user(
     user_id: uuid.UUID,
     user_update: UserUpdate,
-    current_user: User = Depends(get_current_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Update user (self or admin)."""
-    # Users can only update their own profile unless they're admin
-    user_repo = UserRepository(db)
-
-    if str(current_user.id) != user_id and not current_user.is_active:
+    """Update a user profile (self, or a super administrator)."""
+    if user_id != access.user.id and not access.is_platform_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot update other users",
         )
 
-    user = user_repo.get_by_id(user_id)
-    if not user:
+    user_repo = UserRepository(db)
+    if not user_repo.get_by_id(user_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
 
     update_data = user_update.model_dump(exclude_unset=True)
-    updated_user = user_repo.update(user_id, update_data)
+    update_data["updated_by"] = access.user.id
 
-    return updated_user
+    return user_repo.update(user_id, update_data)
 
 
 @router.post("/{user_id}/deactivate")
 async def deactivate_user(
     user_id: uuid.UUID,
-    current_user: User = Depends(get_current_admin_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Deactivate a user (admin only)."""
-    user_repo = UserRepository(db)
-    user = user_repo.deactivate_user(user_id)
+    """Deactivate a user (super administrators only)."""
+    access.require_platform_admin()
 
-    if not user:
+    if user_id == access.user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot deactivate your own account",
+        )
+
+    if not UserRepository(db).deactivate_user(user_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
@@ -139,14 +170,13 @@ async def deactivate_user(
 @router.post("/{user_id}/activate")
 async def activate_user(
     user_id: uuid.UUID,
-    current_user: User = Depends(get_current_admin_user),
+    access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Activate a user (admin only)."""
-    user_repo = UserRepository(db)
-    user = user_repo.activate_user(user_id)
+    """Activate a user (super administrators only)."""
+    access.require_platform_admin()
 
-    if not user:
+    if not UserRepository(db).activate_user(user_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
