@@ -1,16 +1,29 @@
 """Core EPIRO models."""
-# mypy: ignore-errors
 
+import uuid
+from datetime import date, datetime
+from decimal import Decimal
 from enum import Enum
+from typing import Any, Optional
 
 from geoalchemy2 import Geometry
-from sqlalchemy import Boolean, Column
+from sqlalchemy import Boolean, Column, Date, DateTime
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy import ForeignKey, Index, Integer, String, Table, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy import ForeignKey, Index, Integer, Numeric, String, Table, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import TimestampedModel
+from .base import Base, TimestampedModel
+
+
+def _enum_values(enum_cls: type[Enum]) -> list[str]:
+    """Persist the enum's value rather than its member name.
+
+    SQLAlchemy stores ``Enum.name`` by default, which would write "SUPER_ADMIN"
+    while every API payload and client uses "super_admin". Storing values keeps
+    the database and the wire format identical.
+    """
+    return [str(member.value) for member in enum_cls]
 
 
 class Role(str, Enum):
@@ -80,17 +93,32 @@ class ReadinessStatus(str, Enum):
 # Association tables
 user_organisation = Table(
     "user_organisation",
-    TimestampedModel.metadata,
+    Base.metadata,
     Column("user_id", UUID(as_uuid=True), ForeignKey("user.id"), primary_key=True),
-    Column("organisation_id", UUID(as_uuid=True), ForeignKey("organisation.id"), primary_key=True),
-    Column("role", SQLEnum(Role), default=Role.PUBLIC_USER),
+    Column(
+        "organisation_id",
+        UUID(as_uuid=True),
+        ForeignKey("organisation.id"),
+        primary_key=True,
+    ),
+    Column(
+        "role",
+        SQLEnum(Role, values_callable=_enum_values),
+        nullable=False,
+        default=Role.PUBLIC_USER,
+    ),
 )
 
 programme_thematic = Table(
     "programme_thematic",
-    TimestampedModel.metadata,
+    Base.metadata,
     Column("programme_id", UUID(as_uuid=True), ForeignKey("programme.id"), primary_key=True),
-    Column("thematic_id", UUID(as_uuid=True), ForeignKey("thematic_area.id"), primary_key=True),
+    Column(
+        "thematic_id",
+        UUID(as_uuid=True),
+        ForeignKey("thematic_area.id"),
+        primary_key=True,
+    ),
 )
 
 
@@ -99,26 +127,35 @@ class Organisation(TimestampedModel):
 
     __tablename__ = "organisation"
 
-    name = Column(String(255), nullable=False, unique=True)
-    code = Column(String(50), nullable=False, unique=True)
-    description = Column(Text)
-    country = Column(String(2), default="NG")
-    timezone = Column(String(50), default="Africa/Lagos")
-    logo_url = Column(String(500))
-    website = Column(String(500))
-    is_active = Column(Boolean, default=True)
-    metadata_json = Column(JSON, default={})
+    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    country: Mapped[str] = mapped_column(String(2), default="NG", nullable=False)
+    timezone: Mapped[str] = mapped_column(String(50), default="Africa/Lagos", nullable=False)
+    logo_url: Mapped[Optional[str]] = mapped_column(String(500))
+    website: Mapped[Optional[str]] = mapped_column(String(500))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
     # Relationships
-    users = relationship("User", secondary=user_organisation, back_populates="organisations")
-    programmes = relationship(
-        "Programme", back_populates="organisation", cascade="all, delete-orphan"
+    users: Mapped[list["User"]] = relationship(
+        secondary=user_organisation, back_populates="organisations"
     )
-    projects = relationship("Project", back_populates="organisation", cascade="all, delete-orphan")
-    evidence_items = relationship(
-        "Evidence", back_populates="organisation", cascade="all, delete-orphan"
+    programmes: Mapped[list["Programme"]] = relationship(
+        back_populates="organisation", cascade="all, delete-orphan"
     )
-    sources = relationship("Source", back_populates="organisation", cascade="all, delete-orphan")
+    projects: Mapped[list["Project"]] = relationship(
+        back_populates="organisation", cascade="all, delete-orphan"
+    )
+    evidence_items: Mapped[list["Evidence"]] = relationship(
+        back_populates="organisation", cascade="all, delete-orphan"
+    )
+    sources: Mapped[list["Source"]] = relationship(
+        back_populates="organisation", cascade="all, delete-orphan"
+    )
+    stories: Mapped[list["Story"]] = relationship(
+        back_populates="organisation", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         Index("idx_organisation_code", "code"),
@@ -131,22 +168,22 @@ class User(TimestampedModel):
 
     __tablename__ = "user"
 
-    email = Column(String(255), nullable=False, unique=True)
-    first_name = Column(String(100), nullable=False)
-    last_name = Column(String(100), nullable=False)
-    password_hash = Column(String(255), nullable=False)
-    is_active = Column(Boolean, default=True)
-    is_verified = Column(Boolean, default=False)
-    last_login = Column(String)
-    phone = Column(String(20))
-    avatar_url = Column(String(500))
-    timezone = Column(String(50))
-    language = Column(String(5), default="en")
-    preferences = Column(JSON, default={})
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    first_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    phone: Mapped[Optional[str]] = mapped_column(String(20))
+    avatar_url: Mapped[Optional[str]] = mapped_column(String(500))
+    timezone: Mapped[Optional[str]] = mapped_column(String(50))
+    language: Mapped[str] = mapped_column(String(5), default="en", nullable=False)
+    preferences: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
     # Relationships
-    organisations = relationship(
-        "Organisation", secondary=user_organisation, back_populates="users"
+    organisations: Mapped[list["Organisation"]] = relationship(
+        secondary=user_organisation, back_populates="users"
     )
 
     __table_args__ = (
@@ -160,21 +197,19 @@ class ThematicArea(TimestampedModel):
 
     __tablename__ = "thematic_area"
 
-    name = Column(String(100), nullable=False, unique=True)
-    code = Column(String(50), nullable=False, unique=True)
-    description = Column(Text)
-    icon = Column(String(50))
-    color = Column(String(7))
-    order = Column(Integer, default=0)
-    is_active = Column(Boolean, default=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    icon: Mapped[Optional[str]] = mapped_column(String(50))
+    color: Mapped[Optional[str]] = mapped_column(String(7))
+    order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     # Relationships
-    programmes = relationship(
-        "Programme",
-        secondary=programme_thematic,
-        back_populates="thematic_areas",
+    programmes: Mapped[list["Programme"]] = relationship(
+        secondary=programme_thematic, back_populates="thematic_areas"
     )
-    evidence_items = relationship("Evidence", back_populates="thematic_area")
+    evidence_items: Mapped[list["Evidence"]] = relationship(back_populates="thematic_area")
 
     __table_args__ = (
         Index("idx_thematic_code", "code"),
@@ -187,27 +222,26 @@ class Programme(TimestampedModel):
 
     __tablename__ = "programme"
 
-    name = Column(String(255), nullable=False)
-    code = Column(String(100), nullable=False)
-    description = Column(Text)
-    organisation_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("organisation.id"),
-        nullable=False,
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    code: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False
     )
-    start_date = Column(String)
-    end_date = Column(String)
-    budget = Column(Integer)
-    status = Column(String(50), default="active")
-    metadata_json = Column(JSON, default={})
+    start_date: Mapped[Optional[date]] = mapped_column(Date)
+    end_date: Mapped[Optional[date]] = mapped_column(Date)
+    budget: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2))
+    budget_currency: Mapped[Optional[str]] = mapped_column(String(3))
+    status: Mapped[str] = mapped_column(String(50), default="active", nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
     # Relationships
-    organisation = relationship("Organisation", back_populates="programmes")
-    projects = relationship("Project", back_populates="programme", cascade="all, delete-orphan")
-    thematic_areas = relationship(
-        "ThematicArea",
-        secondary=programme_thematic,
-        back_populates="programmes",
+    organisation: Mapped["Organisation"] = relationship(back_populates="programmes")
+    projects: Mapped[list["Project"]] = relationship(
+        back_populates="programme", cascade="all, delete-orphan"
+    )
+    thematic_areas: Mapped[list["ThematicArea"]] = relationship(
+        secondary=programme_thematic, back_populates="programmes"
     )
 
     __table_args__ = (
@@ -221,27 +255,32 @@ class Project(TimestampedModel):
 
     __tablename__ = "project"
 
-    name = Column(String(255), nullable=False)
-    code = Column(String(100), nullable=False)
-    description = Column(Text)
-    organisation_id = Column(UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False)
-    programme_id = Column(UUID(as_uuid=True), ForeignKey("programme.id"), nullable=True)
-    start_date = Column(String)
-    end_date = Column(String)
-    budget = Column(Integer)
-    status = Column(String(50), default="active")
-    location_state = Column(String(50))
-    location_lga = Column(String(100))
-    location_community = Column(String(100))
-    implementing_org = Column(String(255))
-    target_beneficiaries = Column(Integer)
-    metadata_json = Column(JSON, default={})
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    code: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False
+    )
+    programme_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("programme.id"), nullable=True
+    )
+    start_date: Mapped[Optional[date]] = mapped_column(Date)
+    end_date: Mapped[Optional[date]] = mapped_column(Date)
+    budget: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2))
+    budget_currency: Mapped[Optional[str]] = mapped_column(String(3))
+    status: Mapped[str] = mapped_column(String(50), default="active", nullable=False)
+    location_state: Mapped[Optional[str]] = mapped_column(String(50))
+    location_lga: Mapped[Optional[str]] = mapped_column(String(100))
+    location_community: Mapped[Optional[str]] = mapped_column(String(100))
+    implementing_org: Mapped[Optional[str]] = mapped_column(String(255))
+    target_beneficiaries: Mapped[Optional[int]] = mapped_column(Integer)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
     # Relationships
-    organisation = relationship("Organisation", back_populates="projects")
-    programme = relationship("Programme", back_populates="projects")
-    evidence_items = relationship("Evidence", back_populates="project")
-    locations = relationship("Location", back_populates="project")
+    organisation: Mapped["Organisation"] = relationship(back_populates="projects")
+    programme: Mapped[Optional["Programme"]] = relationship(back_populates="projects")
+    evidence_items: Mapped[list["Evidence"]] = relationship(back_populates="project")
+    locations: Mapped[list["Location"]] = relationship(back_populates="project")
 
     __table_args__ = (
         UniqueConstraint("organisation_id", "code", name="uq_project_org_code"),
@@ -255,18 +294,22 @@ class Location(TimestampedModel):
 
     __tablename__ = "location"
 
-    project_id = Column(UUID(as_uuid=True), ForeignKey("project.id"), nullable=False)
-    state = Column(String(50))
-    lga = Column(String(100))
-    community = Column(String(100))
-    latitude = Column(String)
-    longitude = Column(String)
-    geom = Column(Geometry("POINT", srid=4326), nullable=True)
-    description = Column(Text)
+    # Nullable so a location can be recorded for evidence that is not tied to a
+    # project.
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project.id"), nullable=True
+    )
+    state: Mapped[Optional[str]] = mapped_column(String(50))
+    lga: Mapped[Optional[str]] = mapped_column(String(100))
+    community: Mapped[Optional[str]] = mapped_column(String(100))
+    latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(9, 6))
+    longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(9, 6))
+    geom: Mapped[Optional[Any]] = mapped_column(Geometry("POINT", srid=4326), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text)
 
     # Relationships
-    project = relationship("Project", back_populates="locations")
-    evidence_items = relationship("Evidence", back_populates="location")
+    project: Mapped[Optional["Project"]] = relationship(back_populates="locations")
+    evidence_items: Mapped[list["Evidence"]] = relationship(back_populates="location")
 
     __table_args__ = (
         Index("idx_location_project_id", "project_id"),
@@ -279,19 +322,21 @@ class Source(TimestampedModel):
 
     __tablename__ = "source"
 
-    organisation_id = Column(UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False)
-    name = Column(String(255), nullable=False)
-    source_type = Column(String(50), nullable=False)  # government, institutional, field, etc.
-    url = Column(String(500))
-    description = Column(Text)
-    credibility_score = Column(Integer, default=50)  # 0-100
-    verified = Column(Boolean, default=False)
-    is_active = Column(Boolean, default=True)
-    metadata_json = Column(JSON, default={})
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    url: Mapped[Optional[str]] = mapped_column(String(500))
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    credibility_score: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+    verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
 
     # Relationships
-    organisation = relationship("Organisation", back_populates="sources")
-    evidence_items = relationship("Evidence", back_populates="source")
+    organisation: Mapped["Organisation"] = relationship(back_populates="sources")
+    evidence_items: Mapped[list["Evidence"]] = relationship(back_populates="source")
 
     __table_args__ = (
         Index("idx_source_organisation_id", "organisation_id"),
@@ -304,51 +349,71 @@ class Evidence(TimestampedModel):
 
     __tablename__ = "evidence"
 
-    organisation_id = Column(UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False)
-    project_id = Column(UUID(as_uuid=True), ForeignKey("project.id"), nullable=True)
-    location_id = Column(UUID(as_uuid=True), ForeignKey("location.id"), nullable=True)
-    source_id = Column(UUID(as_uuid=True), ForeignKey("source.id"), nullable=False)
-    thematic_area_id = Column(UUID(as_uuid=True), ForeignKey("thematic_area.id"), nullable=True)
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False
+    )
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project.id"), nullable=True
+    )
+    location_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("location.id"), nullable=True
+    )
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("source.id"), nullable=False
+    )
+    thematic_area_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("thematic_area.id"), nullable=True
+    )
 
-    title = Column(String(255), nullable=False)
-    description = Column(Text)
-    status = Column(SQLEnum(EvidenceStatus), default=EvidenceStatus.DRAFT)
-    evidence_date = Column(String)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[EvidenceStatus] = mapped_column(
+        SQLEnum(EvidenceStatus, values_callable=_enum_values),
+        default=EvidenceStatus.DRAFT,
+        nullable=False,
+    )
+    evidence_date: Mapped[Optional[date]] = mapped_column(Date)
 
     # Evidence details
-    beneficiaries = Column(Integer)
-    outcome = Column(Text)
-    confidence_level = Column(Integer)  # 0-100
+    beneficiaries: Mapped[Optional[int]] = mapped_column(Integer)
+    outcome: Mapped[Optional[str]] = mapped_column(Text)
+    confidence_level: Mapped[Optional[int]] = mapped_column(Integer)
 
     # Files and media
-    document_url = Column(String(500))
-    image_urls = Column(ARRAY(String), default=[])
-    video_urls = Column(ARRAY(String), default=[])
+    document_url: Mapped[Optional[str]] = mapped_column(String(500))
+    image_urls: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, nullable=False)
+    video_urls: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, nullable=False)
 
     # Verification
-    verification_status = Column(String(50), default="unverified")
-    verified_by = Column(UUID(as_uuid=True))
-    verified_date = Column(String)
-    verifier_notes = Column(Text)
+    verification_status: Mapped[str] = mapped_column(
+        String(50), default="unverified", nullable=False
+    )
+    verified_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+    verified_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    verifier_notes: Mapped[Optional[str]] = mapped_column(Text)
 
     # Approval
-    approval_status = Column(String(50), default="pending")
-    approved_by = Column(UUID(as_uuid=True))
-    approved_date = Column(String)
+    approval_status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False)
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+    approved_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     # Metadata
-    metadata_json = Column(JSON, default={})
-    tags = Column(ARRAY(String), default=[])
-    version = Column(Integer, default=1)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=list, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     # Relationships
-    organisation = relationship("Organisation", back_populates="evidence_items")
-    project = relationship("Project", back_populates="evidence_items")
-    location = relationship("Location", back_populates="evidence_items")
-    source = relationship("Source", back_populates="evidence_items")
-    thematic_area = relationship("ThematicArea", back_populates="evidence_items")
-    stories = relationship("Story", back_populates="evidence")
-    audit_logs = relationship("AuditLog", back_populates="evidence")
+    organisation: Mapped["Organisation"] = relationship(back_populates="evidence_items")
+    project: Mapped[Optional["Project"]] = relationship(back_populates="evidence_items")
+    location: Mapped[Optional["Location"]] = relationship(back_populates="evidence_items")
+    source: Mapped["Source"] = relationship(back_populates="evidence_items")
+    thematic_area: Mapped[Optional["ThematicArea"]] = relationship(back_populates="evidence_items")
+    stories: Mapped[list["Story"]] = relationship(back_populates="evidence")
+    audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="evidence")
 
     __table_args__ = (
         Index("idx_evidence_organisation_id", "organisation_id"),
@@ -362,22 +427,35 @@ class Story(TimestampedModel):
 
     __tablename__ = "story"
 
-    evidence_id = Column(UUID(as_uuid=True), ForeignKey("evidence.id"), nullable=False)
-    title = Column(String(255), nullable=False)
-    headline = Column(String(500))
-    body = Column(Text, nullable=False)
-    summary = Column(Text)
-    language = Column(String(5), default="en")
-    status = Column(String(50), default="draft")
-    featured = Column(Boolean, default=False)
-    published_date = Column(String)
-    version = Column(Integer, default=1)
+    # Tenancy is carried explicitly rather than inferred through evidence, so
+    # story queries can be scoped without a join.
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False
+    )
+    evidence_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("evidence.id"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    headline: Mapped[Optional[str]] = mapped_column(String(500))
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[Optional[str]] = mapped_column(Text)
+    language: Mapped[str] = mapped_column(String(5), default="en", nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="draft", nullable=False)
+    featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+    approved_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    published_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     # Relationships
-    evidence = relationship("Evidence", back_populates="stories")
+    organisation: Mapped["Organisation"] = relationship(back_populates="stories")
+    evidence: Mapped["Evidence"] = relationship(back_populates="stories")
 
     __table_args__ = (
         Index("idx_story_evidence_id", "evidence_id"),
+        Index("idx_story_organisation_id", "organisation_id"),
         Index("idx_story_status", "status"),
     )
 
@@ -387,20 +465,30 @@ class Question(TimestampedModel):
 
     __tablename__ = "question"
 
-    organisation_id = Column(UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=True)
-    category = Column(String(100))
-    question_text = Column(Text, nullable=False)
-    location_state = Column(String(50))
-    location_lga = Column(String(100))
-    language = Column(String(5), default="en")
-    is_anonymous = Column(Boolean, default=True)
-    submitter_email = Column(String(255))
-    status = Column(SQLEnum(QuestionStatus), default=QuestionStatus.NEW)
-    assigned_to = Column(UUID(as_uuid=True))
-    response = Column(Text)
-    response_date = Column(String)
-    approved_by = Column(UUID(as_uuid=True))
-    is_published = Column(Boolean, default=False)
+    organisation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=True
+    )
+    category: Mapped[Optional[str]] = mapped_column(String(100))
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    location_state: Mapped[Optional[str]] = mapped_column(String(50))
+    location_lga: Mapped[Optional[str]] = mapped_column(String(100))
+    language: Mapped[str] = mapped_column(String(5), default="en", nullable=False)
+    is_anonymous: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    submitter_email: Mapped[Optional[str]] = mapped_column(String(255))
+    status: Mapped[QuestionStatus] = mapped_column(
+        SQLEnum(QuestionStatus, values_callable=_enum_values),
+        default=QuestionStatus.NEW,
+        nullable=False,
+    )
+    assigned_to: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+    response: Mapped[Optional[str]] = mapped_column(Text)
+    response_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     __table_args__ = (
         Index("idx_question_status", "status"),
@@ -413,15 +501,25 @@ class IntegritySignal(TimestampedModel):
 
     __tablename__ = "integrity_signal"
 
-    organisation_id = Column(UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=True)
-    claim = Column(Text, nullable=False)
-    source = Column(String(255))
-    priority = Column(SQLEnum(IntegritySignalPriority), default=IntegritySignalPriority.LOW_RISK)
-    status = Column(String(50), default="new")
-    assigned_to = Column(UUID(as_uuid=True))
-    verification_result = Column(Text)
-    response = Column(Text)
-    approved_by = Column(UUID(as_uuid=True))
+    organisation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=True
+    )
+    claim: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[Optional[str]] = mapped_column(String(255))
+    priority: Mapped[IntegritySignalPriority] = mapped_column(
+        SQLEnum(IntegritySignalPriority, values_callable=_enum_values),
+        default=IntegritySignalPriority.LOW_RISK,
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(50), default="new", nullable=False)
+    assigned_to: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+    verification_result: Mapped[Optional[str]] = mapped_column(Text)
+    response: Mapped[Optional[str]] = mapped_column(Text)
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
 
     __table_args__ = (
         Index("idx_integrity_priority", "priority"),
@@ -434,15 +532,23 @@ class Scenario(TimestampedModel):
 
     __tablename__ = "scenario"
 
-    organisation_id = Column(UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=True)
-    name = Column(String(255), nullable=False)
-    category = Column(String(50))  # policy, security, information, political, electoral, emergency
-    description = Column(Text)
-    trigger = Column(Text)
-    status = Column(SQLEnum(ReadinessStatus), default=ReadinessStatus.GREEN)
-    owner = Column(UUID(as_uuid=True))
-    playbook_url = Column(String(500))
-    last_drill_date = Column(String)
+    organisation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[Optional[str]] = mapped_column(String(50))
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    trigger: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[ReadinessStatus] = mapped_column(
+        SQLEnum(ReadinessStatus, values_callable=_enum_values),
+        default=ReadinessStatus.GREEN,
+        nullable=False,
+    )
+    owner: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+    playbook_url: Mapped[Optional[str]] = mapped_column(String(500))
+    last_drill_date: Mapped[Optional[date]] = mapped_column(Date)
 
     __table_args__ = (Index("idx_scenario_status", "status"),)
 
@@ -452,19 +558,25 @@ class AuditLog(TimestampedModel):
 
     __tablename__ = "audit_log"
 
-    organisation_id = Column(UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("user.id"), nullable=True)
-    evidence_id = Column(UUID(as_uuid=True), ForeignKey("evidence.id"), nullable=True)
-    action = Column(String(255), nullable=False)
-    entity_type = Column(String(50), nullable=False)
-    entity_id = Column(UUID(as_uuid=True))
-    old_values = Column(JSON)
-    new_values = Column(JSON)
-    ip_address = Column(String(45))
-    user_agent = Column(String(500))
+    organisation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=True
+    )
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+    evidence_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("evidence.id"), nullable=True
+    )
+    action: Mapped[str] = mapped_column(String(255), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    old_values: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB)
+    new_values: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45))
+    user_agent: Mapped[Optional[str]] = mapped_column(String(500))
 
     # Relationships
-    evidence = relationship("Evidence", back_populates="audit_logs")
+    evidence: Mapped[Optional["Evidence"]] = relationship(back_populates="audit_logs")
 
     __table_args__ = (
         Index("idx_audit_organisation_id", "organisation_id"),

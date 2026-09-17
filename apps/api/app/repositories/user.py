@@ -1,6 +1,6 @@
 """User repository."""
-# mypy: ignore-errors
 
+import uuid
 from typing import Optional
 
 from sqlalchemy import or_
@@ -43,7 +43,7 @@ class UserRepository(BaseRepository[User]):
         users = query.offset(skip).limit(limit).all()
         return users, total
 
-    def deactivate_user(self, user_id: str) -> Optional[User]:
+    def deactivate_user(self, user_id: uuid.UUID) -> Optional[User]:
         """Deactivate a user."""
         user = self.get_by_id(user_id)
         if user:
@@ -52,7 +52,7 @@ class UserRepository(BaseRepository[User]):
             self.db.refresh(user)
         return user
 
-    def activate_user(self, user_id: str) -> Optional[User]:
+    def activate_user(self, user_id: uuid.UUID) -> Optional[User]:
         """Activate a user."""
         user = self.get_by_id(user_id)
         if user:

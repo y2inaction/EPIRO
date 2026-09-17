@@ -20,6 +20,8 @@ from .core import (
     Story,
     ThematicArea,
     User,
+    programme_thematic,
+    user_organisation,
 )
 
 __all__ = [
@@ -43,4 +45,6 @@ __all__ = [
     "Scenario",
     "ReadinessStatus",
     "AuditLog",
+    "user_organisation",
+    "programme_thematic",
 ]

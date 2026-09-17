@@ -1,6 +1,10 @@
 """Authentication schemas."""
 
-from pydantic import BaseModel, EmailStr, Field
+import uuid
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class UserBase(BaseModel):
@@ -9,7 +13,7 @@ class UserBase(BaseModel):
     email: EmailStr
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
-    phone: str | None = None
+    phone: Optional[str] = None
 
 
 class UserCreate(UserBase):
@@ -21,28 +25,25 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     """User update schema."""
 
-    first_name: str | None = None
-    last_name: str | None = None
-    phone: str | None = None
-    timezone: str | None = None
-    language: str | None = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
+    timezone: Optional[str] = None
+    language: Optional[str] = None
 
 
 class UserResponse(UserBase):
     """User response schema."""
 
-    id: str
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
     is_active: bool
     is_verified: bool
-    timezone: str | None = None
+    timezone: Optional[str] = None
     language: str
-    created_at: str
-    updated_at: str
-
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
+    created_at: datetime
+    updated_at: datetime
 
 
 class LoginRequest(BaseModel):

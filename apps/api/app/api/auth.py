@@ -1,5 +1,6 @@
 """Authentication endpoints."""
-# mypy: ignore-errors
+
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -96,7 +97,14 @@ async def refresh_token(request: RefreshTokenRequest, db: Session = Depends(get_
             detail="Invalid refresh token",
         )
 
-    user_id = payload.get("sub")
+    try:
+        user_id = uuid.UUID(str(payload.get("sub")))
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+
     user_repo = UserRepository(db)
     user = user_repo.get_by_id(user_id)
 

@@ -1,5 +1,8 @@
 """Question and citizen engagement endpoints."""
-# mypy: ignore-errors
+
+import uuid
+from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -8,7 +11,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Question, QuestionStatus, User
 from app.repositories.base import BaseRepository
-from app.schemas.core import QuestionCreate, QuestionResponse
+from app.schemas.core import QuestionCreate, QuestionResponse, QuestionUpdate
 
 router = APIRouter()
 
@@ -17,8 +20,8 @@ router = APIRouter()
 async def list_questions(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    status_filter: str = Query(None),
-    organisation_id: str = Query(None),
+    status_filter: Optional[str] = Query(None),
+    organisation_id: Optional[uuid.UUID] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -45,7 +48,7 @@ async def list_questions(
 
 @router.get("/{question_id}", response_model=QuestionResponse)
 async def get_question(
-    question_id: str,
+    question_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -77,8 +80,8 @@ async def submit_question(
 
 @router.put("/{question_id}", response_model=QuestionResponse)
 async def update_question(
-    question_id: str,
-    question_update: dict,
+    question_id: uuid.UUID,
+    question_update: QuestionUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -92,15 +95,16 @@ async def update_question(
             detail="Question not found",
         )
 
-    question_update["updated_by"] = current_user.id
-    updated_question = question_repo.update(question_id, question_update)
+    update_data = question_update.model_dump(exclude_unset=True)
+    update_data["updated_by"] = current_user.id
+    updated_question = question_repo.update(question_id, update_data)
 
     return updated_question
 
 
 @router.post("/{question_id}/respond", response_model=QuestionResponse)
 async def respond_to_question(
-    question_id: str,
+    question_id: uuid.UUID,
     response_text: str = Query(..., min_length=1),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -116,7 +120,7 @@ async def respond_to_question(
         )
 
     question.response = response_text
-    question.response_date = str(__import__("datetime").datetime.now())
+    question.response_date = datetime.now(timezone.utc)
     question.status = QuestionStatus.RESPONSE_DRAFTED
     question.updated_by = current_user.id
 
@@ -128,7 +132,7 @@ async def respond_to_question(
 
 @router.post("/{question_id}/approve", response_model=QuestionResponse)
 async def approve_question_response(
-    question_id: str,
+    question_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -160,7 +164,7 @@ async def approve_question_response(
 
 @router.post("/{question_id}/publish", response_model=QuestionResponse)
 async def publish_question_response(
-    question_id: str,
+    question_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -192,7 +196,7 @@ async def publish_question_response(
 
 @router.post("/{question_id}/close", response_model=QuestionResponse)
 async def close_question(
-    question_id: str,
+    question_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

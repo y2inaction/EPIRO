@@ -1,5 +1,6 @@
 """Story/Public information management endpoints."""
-# mypy: ignore-errors
+
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -8,7 +9,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Evidence, Story, User
 from app.repositories.base import BaseRepository
-from app.schemas.core import StoryCreate, StoryResponse
+from app.schemas.core import StoryCreate, StoryResponse, StoryUpdate
 
 router = APIRouter()
 
@@ -23,14 +24,9 @@ async def list_stories(
     db: Session = Depends(get_db),
 ):
     """List stories with filters."""
-    filters = {"language": language}
+    query = db.query(Story).filter(Story.language == language)
     if featured_only:
-        filters["featured"] = True
-
-    query = db.query(Story)
-    for key, value in filters.items():
-        if hasattr(Story, key):
-            query = query.filter(getattr(Story, key) == value)
+        query = query.filter(Story.featured.is_(True))
 
     total = query.count()
     stories = query.offset(skip).limit(limit).all()
@@ -46,7 +42,7 @@ async def list_stories(
 
 @router.get("/{story_id}", response_model=StoryResponse)
 async def get_story(
-    story_id: str,
+    story_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -72,7 +68,8 @@ async def create_story(
     """Create a new story from evidence."""
     # Verify evidence exists
     evidence_repo = BaseRepository(db, Evidence)
-    if not evidence_repo.get_by_id(story_create.evidence_id):
+    evidence = evidence_repo.get_by_id(story_create.evidence_id)
+    if not evidence:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Evidence not found",
@@ -80,6 +77,8 @@ async def create_story(
 
     story_repo = BaseRepository(db, Story)
     story_data = story_create.model_dump()
+    # Tenancy follows the evidence the story is built from.
+    story_data["organisation_id"] = evidence.organisation_id
     story_data["created_by"] = current_user.id
 
     story = story_repo.create(story_data)
@@ -88,8 +87,8 @@ async def create_story(
 
 @router.put("/{story_id}", response_model=StoryResponse)
 async def update_story(
-    story_id: str,
-    story_update: dict,
+    story_id: uuid.UUID,
+    story_update: StoryUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -103,15 +102,16 @@ async def update_story(
             detail="Story not found",
         )
 
-    story_update["updated_by"] = current_user.id
-    updated_story = story_repo.update(story_id, story_update)
+    update_data = story_update.model_dump(exclude_unset=True)
+    update_data["updated_by"] = current_user.id
+    updated_story = story_repo.update(story_id, update_data)
 
     return updated_story
 
 
 @router.delete("/{story_id}")
 async def delete_story(
-    story_id: str,
+    story_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -129,7 +129,7 @@ async def delete_story(
 
 @router.post("/{story_id}/publish", response_model=StoryResponse)
 async def publish_story(
-    story_id: str,
+    story_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -154,7 +154,7 @@ async def publish_story(
 
 @router.post("/{story_id}/feature", response_model=StoryResponse)
 async def feature_story(
-    story_id: str,
+    story_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

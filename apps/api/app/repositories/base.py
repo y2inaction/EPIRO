@@ -10,6 +10,9 @@ from app.models.base import TimestampedModel
 
 T = TypeVar("T", bound=TimestampedModel)
 
+# Never assignable through a generic update, whatever a caller supplies.
+IMMUTABLE_FIELDS = frozenset({"id", "created_at", "created_by", "updated_at"})
+
 
 class BaseRepository(Generic[T]):
     """Base repository for CRUD operations."""
@@ -18,6 +21,7 @@ class BaseRepository(Generic[T]):
         """Initialize repository."""
         self.db = db
         self.model = model
+        self._columns = frozenset(model.__table__.columns.keys())
 
     def create(self, obj_in: dict) -> T:
         """Create a new record."""
@@ -53,14 +57,22 @@ class BaseRepository(Generic[T]):
         return records, total
 
     def update(self, id: UUID, obj_in: dict) -> Optional[T]:
-        """Update a record."""
+        """Update a record from an already-validated field mapping.
+
+        Callers pass a schema dump, not raw request data. Unknown keys are
+        ignored and identity columns are never writable, so a field omitted
+        from the update schema cannot be reached from a request body. Values
+        of None are applied, which is what allows an optional field to be
+        cleared.
+        """
         db_obj = self.get_by_id(id)
         if not db_obj:
             return None
 
         for field, value in obj_in.items():
-            if value is not None:
-                setattr(db_obj, field, value)
+            if field in IMMUTABLE_FIELDS or field not in self._columns:
+                continue
+            setattr(db_obj, field, value)
 
         self.db.add(db_obj)
         self.db.commit()

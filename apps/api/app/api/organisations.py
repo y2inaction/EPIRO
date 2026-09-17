@@ -1,5 +1,6 @@
 """Organisation management endpoints."""
-# mypy: ignore-errors
+
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -8,7 +9,7 @@ from app.database import get_db
 from app.dependencies import get_current_admin_user, get_current_user
 from app.models import Organisation, User
 from app.repositories.base import BaseRepository
-from app.schemas.core import OrganisationCreate, OrganisationResponse
+from app.schemas.core import OrganisationCreate, OrganisationResponse, OrganisationUpdate
 
 router = APIRouter()
 
@@ -35,7 +36,7 @@ async def list_organisations(
 
 @router.get("/{organisation_id}", response_model=OrganisationResponse)
 async def get_organisation(
-    organisation_id: str,
+    organisation_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -77,8 +78,8 @@ async def create_organisation(
 
 @router.put("/{organisation_id}", response_model=OrganisationResponse)
 async def update_organisation(
-    organisation_id: str,
-    org_update: dict,
+    organisation_id: uuid.UUID,
+    org_update: OrganisationUpdate,
     current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db),
 ):
@@ -92,15 +93,16 @@ async def update_organisation(
             detail="Organisation not found",
         )
 
-    org_update["updated_by"] = current_user.id
-    updated_org = org_repo.update(organisation_id, org_update)
+    update_data = org_update.model_dump(exclude_unset=True)
+    update_data["updated_by"] = current_user.id
+    updated_org = org_repo.update(organisation_id, update_data)
 
     return updated_org
 
 
 @router.delete("/{organisation_id}")
 async def delete_organisation(
-    organisation_id: str,
+    organisation_id: uuid.UUID,
     current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db),
 ):

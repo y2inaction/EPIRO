@@ -1,5 +1,7 @@
 """Evidence management endpoints."""
-# mypy: ignore-errors
+
+import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -9,7 +11,7 @@ from app.dependencies import get_current_user
 from app.models import Organisation, Source, User
 from app.repositories.base import BaseRepository
 from app.repositories.evidence import EvidenceRepository
-from app.schemas.core import EvidenceCreate, EvidenceResponse
+from app.schemas.core import EvidenceCreate, EvidenceResponse, EvidenceUpdate
 
 router = APIRouter()
 
@@ -18,8 +20,8 @@ router = APIRouter()
 async def list_evidence(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    evidence_status: str = Query(None),
-    organisation_id: str = Query(None),
+    evidence_status: Optional[str] = Query(None),
+    organisation_id: Optional[uuid.UUID] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -44,7 +46,7 @@ async def list_evidence(
 
 @router.get("/{evidence_id}", response_model=EvidenceResponse)
 async def get_evidence(
-    evidence_id: str,
+    evidence_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -94,8 +96,8 @@ async def create_evidence(
 
 @router.put("/{evidence_id}", response_model=EvidenceResponse)
 async def update_evidence(
-    evidence_id: str,
-    evidence_update: dict,
+    evidence_id: uuid.UUID,
+    evidence_update: EvidenceUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -109,15 +111,16 @@ async def update_evidence(
             detail="Evidence not found",
         )
 
-    evidence_update["updated_by"] = current_user.id
-    updated_evidence = evidence_repo.update(evidence_id, evidence_update)
+    update_data = evidence_update.model_dump(exclude_unset=True)
+    update_data["updated_by"] = current_user.id
+    updated_evidence = evidence_repo.update(evidence_id, update_data)
 
     return updated_evidence
 
 
 @router.delete("/{evidence_id}")
 async def delete_evidence(
-    evidence_id: str,
+    evidence_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -135,14 +138,14 @@ async def delete_evidence(
 
 @router.post("/{evidence_id}/verify", response_model=EvidenceResponse)
 async def verify_evidence(
-    evidence_id: str,
+    evidence_id: uuid.UUID,
     notes: str = Query(""),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Verify evidence."""
     evidence_repo = EvidenceRepository(db)
-    evidence = evidence_repo.mark_verified(evidence_id, str(current_user.id), notes)
+    evidence = evidence_repo.mark_verified(evidence_id, current_user.id, notes)
 
     if not evidence:
         raise HTTPException(
@@ -155,13 +158,13 @@ async def verify_evidence(
 
 @router.post("/{evidence_id}/approve", response_model=EvidenceResponse)
 async def approve_evidence(
-    evidence_id: str,
+    evidence_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Approve evidence."""
     evidence_repo = EvidenceRepository(db)
-    evidence = evidence_repo.mark_approved(evidence_id, str(current_user.id))
+    evidence = evidence_repo.mark_approved(evidence_id, current_user.id)
 
     if not evidence:
         raise HTTPException(
@@ -174,7 +177,7 @@ async def approve_evidence(
 
 @router.post("/{evidence_id}/publish", response_model=EvidenceResponse)
 async def publish_evidence(
-    evidence_id: str,
+    evidence_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

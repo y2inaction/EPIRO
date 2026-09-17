@@ -1,5 +1,6 @@
 """Global search endpoints."""
-# mypy: ignore-errors
+
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_
@@ -16,20 +17,18 @@ router = APIRouter()
 @router.get("/")
 async def global_search(
     q: str = Query(..., min_length=1, max_length=200),
-    content_type: str = Query(None),  # evidence, story, question, project
+    content_type: Optional[str] = Query(None),  # evidence, story, question, project
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Search across all content types."""
-    results = {
-        "evidence": [],
-        "stories": [],
-        "questions": [],
-        "projects": [],
-        "total": 0,
-    }
+    evidence_results: list[EvidenceResponse] = []
+    story_results: list[StoryResponse] = []
+    question_results: list[QuestionResponse] = []
+    project_results: list[dict[str, Any]] = []
+    total = 0
 
     # Search evidence
     if not content_type or content_type == "evidence":
@@ -42,8 +41,8 @@ async def global_search(
         evidence_total = evidence_query.count()
         evidence_items = evidence_query.offset(skip).limit(limit).all()
 
-        results["evidence"] = [EvidenceResponse.model_validate(item) for item in evidence_items]
-        results["total"] += evidence_total
+        evidence_results = [EvidenceResponse.model_validate(item) for item in evidence_items]
+        total += evidence_total
 
     # Search stories
     if not content_type or content_type == "story":
@@ -57,8 +56,8 @@ async def global_search(
         story_total = story_query.count()
         story_items = story_query.offset(skip).limit(limit).all()
 
-        results["stories"] = [StoryResponse.model_validate(item) for item in story_items]
-        results["total"] += story_total
+        story_results = [StoryResponse.model_validate(item) for item in story_items]
+        total += story_total
 
     # Search questions
     if not content_type or content_type == "question":
@@ -66,8 +65,8 @@ async def global_search(
         question_total = question_query.count()
         question_items = question_query.offset(skip).limit(limit).all()
 
-        results["questions"] = [QuestionResponse.model_validate(item) for item in question_items]
-        results["total"] += question_total
+        question_results = [QuestionResponse.model_validate(item) for item in question_items]
+        total += question_total
 
     # Search projects
     if not content_type or content_type == "project":
@@ -80,7 +79,7 @@ async def global_search(
         project_total = project_query.count()
         project_items = project_query.offset(skip).limit(limit).all()
 
-        results["projects"] = [
+        project_results = [
             {
                 "id": item.id,
                 "name": item.name,
@@ -89,6 +88,12 @@ async def global_search(
             }
             for item in project_items
         ]
-        results["total"] += project_total
+        total += project_total
 
-    return results
+    return {
+        "evidence": evidence_results,
+        "stories": story_results,
+        "questions": question_results,
+        "projects": project_results,
+        "total": total,
+    }
