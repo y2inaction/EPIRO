@@ -1,8 +1,9 @@
 """Request rate limiting.
 
-Guards the two endpoints reachable without credentials: login, which is
-otherwise brute-forceable, and public question submission, which is otherwise
-a spam channel.
+Guards the endpoints reachable without credentials: login, which is otherwise
+brute-forceable; public question submission, which is otherwise a spam
+channel; and the public portal, where a single client would otherwise be able
+to monopolise the database.
 """
 
 from fastapi import Request, status
@@ -24,6 +25,7 @@ limiter = Limiter(
 
 LOGIN_LIMIT = f"{settings.rate_limit_login_per_minute}/minute"
 PUBLIC_WRITE_LIMIT = f"{settings.rate_limit_public_write_per_minute}/minute"
+PUBLIC_READ_LIMIT = f"{settings.rate_limit_public_read_per_minute}/minute"
 
 
 async def rate_limit_exceeded_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -44,6 +46,7 @@ async def rate_limit_exceeded_handler(request: Request, exc: Exception) -> JSONR
 
 __all__ = [
     "LOGIN_LIMIT",
+    "PUBLIC_READ_LIMIT",
     "PUBLIC_WRITE_LIMIT",
     "RateLimitExceeded",
     "limiter",

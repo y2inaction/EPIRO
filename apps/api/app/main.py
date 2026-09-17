@@ -16,6 +16,7 @@ from app.api import (
     organisations,
     programmes,
     projects,
+    public,
     questions,
     search,
     sources,
@@ -112,6 +113,8 @@ app.include_router(evidence.router, prefix="/api/v1/evidence", tags=["Evidence"]
 app.include_router(stories.router, prefix="/api/v1/stories", tags=["Stories"])
 app.include_router(questions.router, prefix="/api/v1/questions", tags=["Questions"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])
+# No authentication: this is the portal the published information is for.
+app.include_router(public.router, prefix="/api/v1/public", tags=["Public portal"])
 
 
 # Root endpoint

@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     rate_limit_storage_uri: str = "memory://"
     rate_limit_login_per_minute: int = 5
     rate_limit_public_write_per_minute: int = 10
+    # The public portal is meant to be read, so this is generous; it exists to
+    # stop one client from monopolising the database, not to ration access.
+    rate_limit_public_read_per_minute: int = 120
 
     # Organization
     org_name: str = "EPIRO"

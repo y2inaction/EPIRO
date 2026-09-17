@@ -938,6 +938,9 @@ class Question(TimestampedModel):
     )
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # The body answering the question, once it has been triaged to one.
+    organisation: Mapped[Optional["Organisation"]] = relationship()
+
     search_vector: Mapped[Optional[str]] = mapped_column(
         TSVECTOR,
         _search_vector(("question_text", "A"), ("response", "B"), ("category", "C")),
