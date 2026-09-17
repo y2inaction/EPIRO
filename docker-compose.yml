@@ -82,7 +82,10 @@ services:
       dockerfile: Dockerfile
     container_name: epiro-web
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      # Read at request time by the server components, so one built image can
+      # be pointed at any environment. Inside the compose network the API is
+      # reachable as the service name; a browser never calls it directly.
+      API_URL: ${API_URL:-http://api:8000}
     volumes:
       - ./apps/web:/app
       - /app/.next
