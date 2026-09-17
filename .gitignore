@@ -18,8 +18,11 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# No bare `lib/` or `lib64/` here. An unanchored pattern matches a directory
+# of that name at ANY depth, so it silently swallowed apps/web/lib — the
+# frontend's own source — and the commit that added it built locally but could
+# not compile in CI. Virtualenvs are covered by venv/, env/, ENV/ and .venv/,
+# and setuptools output lives under build/, so nothing is lost by dropping it.
 parts/
 sdist/
 var/
