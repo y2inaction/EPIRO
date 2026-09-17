@@ -4,12 +4,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.authorization import APPROVERS, PUBLISHERS, QUESTION_RESPONDERS, AccessControl, get_access
 from app.database import get_db
 from app.models import Question, QuestionStatus
+from app.rate_limit import PUBLIC_WRITE_LIMIT, limiter
 from app.repositories.base import BaseRepository
 from app.schemas.core import QuestionCreate, QuestionResponse, QuestionUpdate
 
@@ -85,7 +86,9 @@ async def get_question(
 
 
 @router.post("/", response_model=QuestionResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(PUBLIC_WRITE_LIMIT)
 async def submit_question(
+    request: Request,
     question_create: QuestionCreate,
     db: Session = Depends(get_db),
 ):

@@ -56,6 +56,8 @@ class Settings(BaseSettings):
 
     # Rate limiting
     rate_limit_enabled: bool = True
+    # In-process by default; point at Redis when running multiple workers.
+    rate_limit_storage_uri: str = "memory://"
     rate_limit_login_per_minute: int = 5
     rate_limit_public_write_per_minute: int = 10
 

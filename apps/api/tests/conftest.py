@@ -7,18 +7,33 @@ so tests neither see nor leave behind each other's data.
 """
 
 import os
-import uuid
-from typing import Any, Dict, Generator, Optional
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine, text
-from sqlalchemy.orm import Session
+# Must precede any app import: settings are read once at import time, and the
+# login tests would otherwise exhaust the per-minute allowance. The dedicated
+# rate-limit test re-enables the limiter for itself.
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
-from app.database import get_db
-from app.main import app
-from app.models import Base, Evidence, Organisation, Role, Source, Story, User, user_organisation
-from app.security import create_access_token, hash_password
+import uuid  # noqa: E402
+from typing import Any, Dict, Generator, Optional  # noqa: E402
+
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import Engine, create_engine, text  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
+
+from app.database import get_db  # noqa: E402
+from app.main import app  # noqa: E402
+from app.models import (  # noqa: E402
+    Base,
+    Evidence,
+    Organisation,
+    Role,
+    Source,
+    Story,
+    User,
+    user_organisation,
+)
+from app.security import create_access_token, hash_password  # noqa: E402
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",

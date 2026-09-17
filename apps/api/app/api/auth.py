@@ -1,13 +1,16 @@
 """Authentication endpoints."""
 
 import uuid
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
+from app.rate_limit import LOGIN_LIMIT, limiter
 from app.repositories.user import UserRepository
 from app.schemas.auth import (
     ChangePasswordRequest,
@@ -50,12 +53,17 @@ async def register(user_create: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(request: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit(LOGIN_LIMIT)
+async def login(
+    request: Request,
+    credentials: LoginRequest,
+    db: Session = Depends(get_db),
+):
     """Login with email and password."""
     user_repo = UserRepository(db)
 
     # Find user by email
-    user = user_repo.get_by_email(request.email)
+    user = user_repo.get_by_email(credentials.email)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -63,7 +71,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         )
 
     # Verify password
-    if not verify_password(request.password, user.password_hash):
+    if not verify_password(credentials.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
@@ -74,6 +82,18 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive",
         )
+
+    user.last_login = datetime.now(timezone.utc)
+    db.commit()
+
+    audit.record(
+        db,
+        action=audit.LOGIN,
+        entity_type="user",
+        entity_id=user.id,
+        user=user,
+        request=request,
+    )
 
     # Generate tokens
     access_token = create_access_token(str(user.id))

@@ -3,9 +3,10 @@
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.authorization import (
     APPROVERS,
     EVIDENCE_AUTHORS,
@@ -85,6 +86,7 @@ async def get_evidence(
 
 @router.post("/", response_model=EvidenceResponse, status_code=status.HTTP_201_CREATED)
 async def create_evidence(
+    request: Request,
     evidence_create: EvidenceCreate,
     access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
@@ -118,11 +120,24 @@ async def create_evidence(
     evidence_data = evidence_create.model_dump()
     evidence_data["created_by"] = access.user.id
 
-    return evidence_repo.create(evidence_data)
+    evidence = evidence_repo.create(evidence_data)
+    audit.record(
+        db,
+        action=audit.CREATED,
+        entity_type="evidence",
+        entity_id=evidence.id,
+        user=access.user,
+        organisation_id=evidence.organisation_id,
+        evidence_id=evidence.id,
+        new_values={"title": evidence.title},
+        request=request,
+    )
+    return evidence
 
 
 @router.put("/{evidence_id}", response_model=EvidenceResponse)
 async def update_evidence(
+    request: Request,
     evidence_id: uuid.UUID,
     evidence_update: EvidenceUpdate,
     access: AccessControl = Depends(get_access),
@@ -132,15 +147,31 @@ async def update_evidence(
     evidence_repo = EvidenceRepository(db)
     evidence = _get_scoped_evidence(evidence_repo, evidence_id, access)
     access.require_role(evidence.organisation_id, EVIDENCE_AUTHORS)
+    organisation_id = evidence.organisation_id
 
     update_data = evidence_update.model_dump(exclude_unset=True)
     update_data["updated_by"] = access.user.id
+    old_values = {field: audit.serialise(getattr(evidence, field, None)) for field in update_data}
 
-    return evidence_repo.update(evidence_id, update_data)
+    updated = evidence_repo.update(evidence_id, update_data)
+    audit.record(
+        db,
+        action=audit.UPDATED,
+        entity_type="evidence",
+        entity_id=evidence_id,
+        user=access.user,
+        organisation_id=organisation_id,
+        evidence_id=evidence_id,
+        old_values=old_values,
+        new_values={field: audit.serialise(value) for field, value in update_data.items()},
+        request=request,
+    )
+    return updated
 
 
 @router.delete("/{evidence_id}")
 async def delete_evidence(
+    request: Request,
     evidence_id: uuid.UUID,
     access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
@@ -150,12 +181,33 @@ async def delete_evidence(
     evidence = _get_scoped_evidence(evidence_repo, evidence_id, access)
     access.require_role(evidence.organisation_id, EVIDENCE_MANAGERS)
 
+    # Captured before deletion: this is the only remaining record of what was
+    # removed, since the delete is not reversible.
+    removed = {
+        "title": evidence.title,
+        "status": audit.serialise(evidence.status),
+        "verification_status": evidence.verification_status,
+        "approval_status": evidence.approval_status,
+    }
+    organisation_id = evidence.organisation_id
+
     evidence_repo.delete(evidence_id)
+    audit.record(
+        db,
+        action=audit.DELETED,
+        entity_type="evidence",
+        entity_id=evidence_id,
+        user=access.user,
+        organisation_id=organisation_id,
+        old_values=removed,
+        request=request,
+    )
     return {"message": "Evidence deleted successfully"}
 
 
 @router.post("/{evidence_id}/verify", response_model=EvidenceResponse)
 async def verify_evidence(
+    request: Request,
     evidence_id: uuid.UUID,
     notes: str = Query(""),
     access: AccessControl = Depends(get_access),
@@ -165,12 +217,26 @@ async def verify_evidence(
     evidence_repo = EvidenceRepository(db)
     evidence = _get_scoped_evidence(evidence_repo, evidence_id, access)
     access.require_role(evidence.organisation_id, EVIDENCE_VERIFIERS)
+    organisation_id = evidence.organisation_id
 
-    return evidence_repo.mark_verified(evidence_id, access.user.id, notes)
+    verified = evidence_repo.mark_verified(evidence_id, access.user.id, notes)
+    audit.record(
+        db,
+        action=audit.VERIFIED,
+        entity_type="evidence",
+        entity_id=evidence_id,
+        user=access.user,
+        organisation_id=organisation_id,
+        evidence_id=evidence_id,
+        new_values={"verification_status": "verified", "notes": notes},
+        request=request,
+    )
+    return verified
 
 
 @router.post("/{evidence_id}/approve", response_model=EvidenceResponse)
 async def approve_evidence(
+    request: Request,
     evidence_id: uuid.UUID,
     access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
@@ -187,12 +253,30 @@ async def approve_evidence(
         )
 
     access.require_distinct_actor(evidence.verified_by)
+    organisation_id = evidence.organisation_id
+    verified_by = evidence.verified_by
 
-    return evidence_repo.mark_approved(evidence_id, access.user.id)
+    approved = evidence_repo.mark_approved(evidence_id, access.user.id)
+    audit.record(
+        db,
+        action=audit.APPROVED,
+        entity_type="evidence",
+        entity_id=evidence_id,
+        user=access.user,
+        organisation_id=organisation_id,
+        evidence_id=evidence_id,
+        new_values={
+            "approval_status": "approved",
+            "verified_by": audit.serialise(verified_by),
+        },
+        request=request,
+    )
+    return approved
 
 
 @router.post("/{evidence_id}/publish", response_model=EvidenceResponse)
 async def publish_evidence(
+    request: Request,
     evidence_id: uuid.UUID,
     access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
@@ -208,4 +292,19 @@ async def publish_evidence(
             detail="Evidence must be approved before it can be published",
         )
 
-    return evidence_repo.publish(evidence_id)
+    organisation_id = evidence.organisation_id
+    approved_by = evidence.approved_by
+
+    published = evidence_repo.publish(evidence_id)
+    audit.record(
+        db,
+        action=audit.PUBLISHED,
+        entity_type="evidence",
+        entity_id=evidence_id,
+        user=access.user,
+        organisation_id=organisation_id,
+        evidence_id=evidence_id,
+        new_values={"status": "published", "approved_by": audit.serialise(approved_by)},
+        request=request,
+    )
+    return published

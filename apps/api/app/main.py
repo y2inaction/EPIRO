@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import auth, evidence, health, organisations, questions, search, stories, users
 from app.config import settings
+from app.rate_limit import RateLimitExceeded, limiter, rate_limit_exceeded_handler
 
 # Configure logging
 logging.basicConfig(level=settings.log_level)
@@ -43,6 +44,10 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Rate limiting. slowapi reads the limiter from application state.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # CORS middleware
 app.add_middleware(
