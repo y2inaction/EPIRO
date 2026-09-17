@@ -34,13 +34,29 @@ Required by master build spec §67. Every CI failure is recorded here with its e
 
 ---
 
+## Phase 1 findings
+
+Defects found while rebuilding, recorded here because each would have become a
+CI failure the moment a real test exercised the code.
+
+| # | Job | Command | Error | Root cause | Fix | Verification | Commit |
+|---|---|---|---|---|---|---|---|
+| 13 | Test Backend | `pytest tests/` | `ValueError: password cannot be longer than 72 bytes` from `hash_password` | `bcrypt` was never pinned, so pip installed 5.x. passlib 1.7.4 probes its bcrypt backend with an over-length password; bcrypt ≥ 4.1 removed `__about__` and 5.x raises instead of truncating, so **every** call failed. Registration and login were broken in any fresh install | Pinned `bcrypt==4.0.1`. The old test suite could not detect this because no test ever hashed a password | Local test suite, then CI | `0823a41` |
+| 14 | Type Check | `mypy app/` | 41 errors on removing the `# mypy: ignore-errors` directives | Legacy SQLAlchemy 1.x `Column()` declarations are not checkable, so the suppressions were hiding genuine defects: `str` path parameters passed to `UUID` columns, a string assigned to a datetime column, an untyped heterogeneous dict | Converted the ORM to 2.x `Mapped[T]`/`mapped_column` and fixed each error | `mypy` clean with zero suppressions across 30 files | `706c036` |
+| 15 | Lint | `flake8 app/` | 14 findings on widening `--select` | The gate selected only `E9,F63,F7,F82`, which excludes unused imports and variables entirely | Removed the narrowing, added `.flake8`, fixed all 14 | `flake8` clean | `747935c` |
+| 16 | — | `alembic upgrade head` | `type "integritysignalpriority" already exists` after a downgrade | Autogenerate's downgrade drops tables but leaves native enum types behind, so re-upgrade fails | Added explicit `DROP TYPE` statements to the downgrade | upgrade → downgrade → upgrade round trip on a fresh database | `347aaa4` |
+| 17 | — | `alembic revision --autogenerate` | Proposed `op.drop_table('spatial_ref_sys')` | Autogenerate does not know PostGIS owns that table | Wired GeoAlchemy2's `include_object` into `env.py`, which prevents it for all future migrations rather than just this one | `alembic check` reports no drift | `347aaa4` |
+
+---
+
 ## Open technical debt arising from these failures
 
-| Ref | Item | Required correction |
+| Ref | Item | Status |
 |---|---|---|
-| #9 | `# mypy: ignore-errors` in 9 modules renders the Type Check job vacuous | Convert `models/core.py` and dependents to SQLAlchemy 2.x typed declarations, then remove every suppression. Scheduled for **Phase 1** |
-| #3 | Two competing `pyproject.toml` files; the root `[tool.isort]` and `[tool.mypy]` sections are never loaded by CI | Consolidate to a single authoritative configuration that CI demonstrably reads. Scheduled for **Phase 1** |
-| #12 | Security Scan cannot pass | Repository owner must enable Code Scanning. Documented as a Gate 11 external limitation |
+| #9 | `# mypy: ignore-errors` in 9 modules renders the Type Check job vacuous | **Resolved** in `706c036`. Zero suppressions remain |
+| #3 | Two competing `pyproject.toml` files; the root `[tool.isort]` and `[tool.mypy]` sections are never loaded by CI | **Resolved** in `747935c`. One authoritative config that CI demonstrably reads |
+| #12 | Security Scan cannot pass | **Resolved externally.** Code Scanning was enabled by the repository owner |
+| #13 | `passlib` is unmaintained and incompatible with current `bcrypt`, holding the pin at 4.0.1 | Open. Replace passlib with direct `bcrypt` use so the pin can be lifted |
 
 ---
 
