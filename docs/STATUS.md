@@ -21,7 +21,7 @@ contradicts this file, this file is right and the other one is stale.
 
 - 19 database tables, one Alembic history, no schema drift (`alembic check`).
 - 99 API operations across 14 routers.
-- 251 tests, 87% line coverage.
+- 251 backend tests at 87% line coverage, plus 40 frontend tests.
 - Seven CI jobs green: lint and format, type check, backend tests, frontend
   tests, Docker build, dependency audit, security scan.
 
@@ -47,7 +47,7 @@ contradicts this file, this file is right and the other one is stale.
 | § | Capability | Status | Notes |
 |---|---|---|---|
 | 13 | Story engine | **CONFIRMED** | Draft → review → approved → published, with approval and publication as separate acts by separate people. |
-| 14 | Public portal | **PARTIAL** | API is CONFIRMED: unauthenticated endpoints serving published stories, evidence and question answers, with citation by permanent reference. There is **no front end** for it. |
+| 14 | Public portal | **CONFIRMED** | Unauthenticated API plus a front end: portal home, stories, the evidence register addressed by permanent reference, published answers and search. |
 | 15 | Citizen questions | **CONFIRMED** | Public submission, triage, research, response, approval, publication, closure. |
 | 16 | Multilingual | **PARTIAL** | Content carries a language code and can be filtered by it. Translations of the same story are **not linked to each other**, and there is no translation workflow. |
 | 35 | Global search | **PARTIAL** | Full-text with ranking and all eight filters across evidence, projects, stories, questions and scenarios. The other content types section 35 names — documents, stakeholders, field missions, intelligence, media, tasks — have no entity yet, and the API says so in its `unsearchable_types` field. |
@@ -84,10 +84,13 @@ visible rather than implied by absence.
 
 ### Front end
 
-**PARTIAL.** The Next.js application builds and passes its checks in CI. It
-does not implement any of the product surface: there is no evidence screen, no
-editorial workspace and no public portal UI. Everything CONFIRMED above is an
-API capability.
+**PARTIAL.** The public portal is **CONFIRMED**: seven routes, responsive,
+keyboard navigable, working in light and dark, verified against a running API.
+
+Everything else is **NOT BUILT**. There is no login, no evidence workspace, no
+editorial screen for drafting or approving a story, no triage queue for
+questions and no dashboard. Every internal capability CONFIRMED above is
+reachable only through the API.
 
 ---
 
