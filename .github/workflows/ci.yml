@@ -108,6 +108,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install --prefer-binary -r requirements.txt
 
+      # Guards the divergence recorded in docs/REBUILD_AUDIT.md section 9.2,
+      # where the migration and the models disagreed on a column name. Runs
+      # against its own database so it cannot interact with the test schema.
+      - name: Verify migrations apply and match the models
+        working-directory: ./apps/api
+        env:
+          PGPASSWORD: epiro_password
+          DATABASE_URL: postgresql://epiro:epiro_password@localhost:5432/epiro_migrations
+        run: |
+          psql -h localhost -U epiro -d epiro -c 'CREATE DATABASE epiro_migrations'
+          alembic upgrade head
+          alembic check
+
       - name: Run tests
         working-directory: ./apps/api
         env:
