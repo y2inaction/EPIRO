@@ -24,6 +24,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
@@ -125,6 +126,19 @@ class MilestoneStatus(str, Enum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     MISSED = "missed"
+
+
+class ApprovalDecision(str, Enum):
+    """Outcomes an approval round can reach.
+
+    Rejection and a request for changes are recorded like any other decision:
+    the history of what was turned down is as much a part of accountability as
+    what went through.
+    """
+
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CHANGES_REQUESTED = "changes_requested"
 
 
 class SourceType(str, Enum):
@@ -878,6 +892,47 @@ class Scenario(TimestampedModel):
     last_drill_date: Mapped[Optional[date]] = mapped_column(Date)
 
     __table_args__ = (Index("idx_scenario_status", "status"),)
+
+
+class ApprovalRecord(TimestampedModel):
+    """One approval decision, kept whatever the outcome.
+
+    Spec section 36 requires approvals to store the reviewer, timestamp,
+    decision, comments and version. Holding only the latest approver on the
+    record itself loses every rejection and every earlier round, which is
+    exactly the history a reviewer needs.
+
+    Addressed by entity_type and entity_id rather than a foreign key per kind,
+    so evidence, stories and questions share one trail.
+    """
+
+    __tablename__ = "approval_record"
+
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False
+    )
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    # The version the decision was made against, so a later edit does not make
+    # the decision look like it covered content it never saw.
+    entity_version: Mapped[Optional[int]] = mapped_column(Integer)
+
+    decision: Mapped[ApprovalDecision] = mapped_column(
+        SQLEnum(ApprovalDecision, values_callable=_enum_values), nullable=False
+    )
+    reviewer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=False
+    )
+    decided_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    comments: Mapped[Optional[str]] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("idx_approval_entity", "entity_type", "entity_id"),
+        Index("idx_approval_organisation_id", "organisation_id"),
+        Index("idx_approval_reviewer_id", "reviewer_id"),
+    )
 
 
 class AuditLog(TimestampedModel):

@@ -8,6 +8,7 @@ from typing import Any, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.core import (
+    ApprovalDecision,
     EvidenceStatus,
     GeographyLevel,
     IntegritySignalPriority,
@@ -641,6 +642,51 @@ class ScenarioResponse(ScenarioBase):
     last_drill_date: Optional[date] = None
     created_at: datetime
     updated_at: datetime
+
+
+class ApprovalDecisionRequest(BaseModel):
+    """Optional detail supplied with an approval decision."""
+
+    comments: Optional[str] = Field(None, max_length=2000)
+
+
+class RejectionRequest(BaseModel):
+    """Detail supplied when refusing a record.
+
+    Comments are required: a rejection without a stated reason gives the author
+    nothing to act on.
+    """
+
+    comments: str = Field(..., min_length=1, max_length=2000)
+    changes_requested: bool = Field(
+        False,
+        description="True when the record should be revised rather than abandoned",
+    )
+
+
+class WithdrawalRequest(BaseModel):
+    """Detail supplied when retracting something already published.
+
+    A reason is required: the point of withdrawing rather than deleting is that
+    the record states why what was published no longer stands.
+    """
+
+    reason: str = Field(..., min_length=1, max_length=2000)
+
+
+class ApprovalRecordResponse(BaseModel):
+    """One decision in the approval trail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    entity_type: str
+    entity_id: uuid.UUID
+    entity_version: Optional[int] = None
+    decision: ApprovalDecision
+    reviewer_id: uuid.UUID
+    decided_at: datetime
+    comments: Optional[str] = None
 
 
 class PaginatedResponse(BaseModel):

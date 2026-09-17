@@ -3,6 +3,8 @@
 from .base import Base, TimestampedModel
 from .core import (
     GEOGRAPHY_LEVEL_ORDER,
+    ApprovalDecision,
+    ApprovalRecord,
     AuditLog,
     Evidence,
     EvidenceStatus,
@@ -69,6 +71,8 @@ __all__ = [
     "Scenario",
     "ReadinessStatus",
     "AuditLog",
+    "ApprovalRecord",
+    "ApprovalDecision",
     "user_organisation",
     "programme_thematic",
 ]

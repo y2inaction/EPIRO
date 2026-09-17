@@ -17,10 +17,29 @@ from app.authorization import (
     get_access,
 )
 from app.database import get_db
-from app.models import Evidence, Geography, Indicator, Organisation, Project, Source
+from app.models import (
+    ApprovalDecision,
+    Evidence,
+    EvidenceStatus,
+    Geography,
+    Indicator,
+    Organisation,
+    Project,
+    Source,
+)
 from app.repositories.base import BaseRepository
 from app.repositories.evidence import EvidenceRepository
-from app.schemas.core import EvidenceCreate, EvidenceResponse, EvidenceUpdate
+from app.schemas.core import (
+    ApprovalDecisionRequest,
+    ApprovalRecordResponse,
+    EvidenceCreate,
+    EvidenceResponse,
+    EvidenceUpdate,
+    RejectionRequest,
+    WithdrawalRequest,
+)
+from app.services.approval import EVIDENCE, decisions_for, record_decision
+from app.services.evidence import invalidate_review
 from app.services.indicator import record_measurement
 
 router = APIRouter()
@@ -187,9 +206,21 @@ async def update_evidence(
     access.require_role(evidence.organisation_id, EVIDENCE_AUTHORS)
     organisation_id = evidence.organisation_id
 
+    if evidence.status is EvidenceStatus.PUBLISHED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Published evidence cannot be edited. Withdraw it first, so the "
+                "public record shows that what was published has been retracted."
+            ),
+        )
+
     update_data = evidence_update.model_dump(exclude_unset=True)
     _check_linked_records(db, organisation_id, update_data)
 
+    # Raises the version, and returns a record that had already been verified
+    # or approved to draft: the sign-off covered the earlier content.
+    update_data.update(invalidate_review(evidence))
     update_data["updated_by"] = access.user.id
     old_values = {field: audit.serialise(getattr(evidence, field, None)) for field in update_data}
 
@@ -278,6 +309,7 @@ async def verify_evidence(
 async def approve_evidence(
     request: Request,
     evidence_id: uuid.UUID,
+    decision: Optional[ApprovalDecisionRequest] = None,
     access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
@@ -295,6 +327,7 @@ async def approve_evidence(
     access.require_distinct_actor(evidence.verified_by)
     organisation_id = evidence.organisation_id
     verified_by = evidence.verified_by
+    version = evidence.version
 
     approved = evidence_repo.mark_approved(evidence_id, access.user.id)
 
@@ -303,6 +336,17 @@ async def approve_evidence(
     moved = record_measurement(db, approved)
     if moved is not None:
         db.commit()
+
+    record_decision(
+        db,
+        entity_type=EVIDENCE,
+        entity_id=evidence_id,
+        organisation_id=organisation_id,
+        decision=ApprovalDecision.APPROVED,
+        reviewer=access.user,
+        comments=decision.comments if decision else None,
+        entity_version=version,
+    )
 
     audit.record(
         db,
@@ -319,6 +363,86 @@ async def approve_evidence(
         request=request,
     )
     return approved
+
+
+@router.post("/{evidence_id}/reject", response_model=EvidenceResponse)
+async def reject_evidence(
+    request: Request,
+    evidence_id: uuid.UUID,
+    rejection: RejectionRequest,
+    access: AccessControl = Depends(get_access),
+    db: Session = Depends(get_db),
+):
+    """Refuse evidence, with a reason.
+
+    EvidenceStatus carried a REJECTED state that nothing could reach, so a
+    record could only ever move forward and a refusal left no trace at all.
+    """
+    evidence_repo = EvidenceRepository(db)
+    evidence = _get_scoped_evidence(evidence_repo, evidence_id, access)
+    access.require_role(evidence.organisation_id, APPROVERS)
+
+    if evidence.status is EvidenceStatus.PUBLISHED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Published evidence cannot be rejected. Withdraw it instead, so "
+                "the public record shows it was retracted rather than never made."
+            ),
+        )
+
+    organisation_id = evidence.organisation_id
+    previous_status = evidence.status.value
+
+    evidence.status = EvidenceStatus.REJECTED
+    evidence.approval_status = "rejected"
+    evidence.updated_by = access.user.id
+    db.commit()
+    db.refresh(evidence)
+
+    record_decision(
+        db,
+        entity_type=EVIDENCE,
+        entity_id=evidence_id,
+        organisation_id=organisation_id,
+        decision=(
+            ApprovalDecision.CHANGES_REQUESTED
+            if rejection.changes_requested
+            else ApprovalDecision.REJECTED
+        ),
+        reviewer=access.user,
+        comments=rejection.comments,
+        entity_version=evidence.version,
+    )
+
+    audit.record(
+        db,
+        action=audit.REJECTED,
+        entity_type="evidence",
+        entity_id=evidence_id,
+        user=access.user,
+        organisation_id=organisation_id,
+        evidence_id=evidence_id,
+        old_values={"status": previous_status},
+        new_values={"status": "rejected", "comments": rejection.comments},
+        request=request,
+    )
+    return evidence
+
+
+@router.get("/{evidence_id}/approvals", response_model=list[ApprovalRecordResponse])
+async def list_evidence_approvals(
+    evidence_id: uuid.UUID,
+    access: AccessControl = Depends(get_access),
+    db: Session = Depends(get_db),
+):
+    """Every approval decision made against this record, oldest first."""
+    _get_scoped_evidence(EvidenceRepository(db), evidence_id, access)
+
+    return [
+        ApprovalRecordResponse.model_validate(record)
+        for record in decisions_for(db, EVIDENCE, evidence_id)
+    ]
 
 
 @router.post("/{evidence_id}/publish", response_model=EvidenceResponse)
@@ -355,3 +479,49 @@ async def publish_evidence(
         request=request,
     )
     return published
+
+
+@router.post("/{evidence_id}/withdraw", response_model=EvidenceResponse)
+async def withdraw_evidence(
+    request: Request,
+    evidence_id: uuid.UUID,
+    withdrawal: WithdrawalRequest,
+    access: AccessControl = Depends(get_access),
+    db: Session = Depends(get_db),
+):
+    """Retract published evidence, with a reason.
+
+    Deleting it or quietly editing it back to draft would leave no trace of
+    something the organisation had already put on the public record. Archiving
+    keeps the record and states that it was retracted.
+    """
+    evidence_repo = EvidenceRepository(db)
+    evidence = _get_scoped_evidence(evidence_repo, evidence_id, access)
+    access.require_role(evidence.organisation_id, PUBLISHERS)
+
+    if evidence.status is not EvidenceStatus.PUBLISHED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only published evidence can be withdrawn",
+        )
+
+    organisation_id = evidence.organisation_id
+
+    evidence.status = EvidenceStatus.ARCHIVED
+    evidence.updated_by = access.user.id
+    db.commit()
+    db.refresh(evidence)
+
+    audit.record(
+        db,
+        action=audit.WITHDRAWN,
+        entity_type="evidence",
+        entity_id=evidence_id,
+        user=access.user,
+        organisation_id=organisation_id,
+        evidence_id=evidence_id,
+        old_values={"status": EvidenceStatus.PUBLISHED.value},
+        new_values={"status": "archived", "reason": withdrawal.reason},
+        request=request,
+    )
+    return evidence
