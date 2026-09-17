@@ -68,6 +68,32 @@ class ThematicAreaBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     code: str = Field(..., min_length=1, max_length=50)
     description: Optional[str] = None
+    icon: Optional[str] = Field(None, max_length=50)
+    color: Optional[str] = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    order: int = Field(0, ge=0)
+
+
+class ThematicAreaCreate(ThematicAreaBase):
+    """Thematic area creation schema.
+
+    The eight streams in spec section 9 are seeded, not hard-coded, so an
+    administrator can add more.
+    """
+
+
+class ThematicAreaUpdate(BaseModel):
+    """Thematic area update schema.
+
+    Code is absent: it is the stable identifier existing records were filed
+    under, so changing it would silently reinterpret them.
+    """
+
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    icon: Optional[str] = Field(None, max_length=50)
+    color: Optional[str] = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    order: Optional[int] = Field(None, ge=0)
+    is_active: Optional[bool] = None
 
 
 class ThematicAreaResponse(ThematicAreaBase):
@@ -77,6 +103,8 @@ class ThematicAreaResponse(ThematicAreaBase):
 
     id: uuid.UUID
     is_active: bool
+    created_at: datetime
+    updated_at: datetime
 
 
 class GeographyBase(BaseModel):

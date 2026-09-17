@@ -18,6 +18,7 @@ from app.api import (
     search,
     sources,
     stories,
+    thematic_areas,
     users,
 )
 from app.config import settings
@@ -101,6 +102,7 @@ app.include_router(
     tags=["Organisations"],
 )
 app.include_router(geography.router, prefix="/api/v1/geography", tags=["Geography"])
+app.include_router(thematic_areas.router, prefix="/api/v1/thematic-areas", tags=["Thematic areas"])
 app.include_router(sources.router, prefix="/api/v1/sources", tags=["Sources"])
 app.include_router(evidence.router, prefix="/api/v1/evidence", tags=["Evidence"])
 app.include_router(stories.router, prefix="/api/v1/stories", tags=["Stories"])
