@@ -65,6 +65,9 @@ Each item below is covered by a test that fails if the behaviour regresses.
 - Updates capture old and new values
 
 ### Platform
+- No known vulnerabilities in any runtime or development dependency, enforced
+  by a Dependency Audit job running pip-audit and npm audit
+- All three Docker images build in CI
 - Rate limiting on login and public question submission
 - Alembic owns the schema; `alembic check` runs in CI to prevent drift
 - Migrations round trip cleanly on a fresh database
@@ -116,9 +119,9 @@ dashboard · operating rhythms · creative layer · public hub · information gr
    audit trail is currently the only record of what was removed.
 5. **Search uses leading-wildcard `ILIKE`**, which cannot use an index. Real
    search indexing is Phase 2 work.
-6. **The Docker build is still not exercised by CI.** The "Build Docker Images"
-   job sets up buildx and extracts metadata but never builds, and the web
-   Dockerfile references a `public/` directory that does not exist.
+6. **Images are built but not run in CI.** All three now build, but nothing
+   starts the stack and exercises it end to end, so a runtime regression in
+   the compose topology would not be caught.
 
 ---
 
