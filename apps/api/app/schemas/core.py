@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models.core import (
     ApprovalDecision,
@@ -557,10 +557,49 @@ class QuestionBase(BaseModel):
 
 
 class QuestionCreate(QuestionBase):
-    """Question creation schema."""
+    """Question creation schema.
+
+    A submitter address is only accepted alongside is_anonymous=false. Storing
+    a contact detail on a record that describes itself as anonymous would be a
+    false statement to the person who submitted it, and spec section 20 limits
+    collection to what an operational purpose requires.
+    """
 
     organisation_id: Optional[uuid.UUID] = None
-    submitter_email: Optional[str] = None
+    submitter_email: Optional[EmailStr] = None
+
+    @model_validator(mode="after")
+    def _anonymous_submissions_carry_no_address(self) -> "QuestionCreate":
+        if self.is_anonymous and self.submitter_email is not None:
+            raise ValueError(
+                "An anonymous question cannot carry a submitter address. "
+                "Set is_anonymous to false to be contacted about it."
+            )
+        return self
+
+
+class QuestionTriage(BaseModel):
+    """Assigning a publicly submitted question to the body that will answer it.
+
+    Until this happens a question belongs to no organisation, so there is no
+    tenant against which to check a role and nothing can act on it.
+    """
+
+    organisation_id: uuid.UUID
+    geography_id: Optional[uuid.UUID] = None
+    category: Optional[str] = Field(None, max_length=100)
+    assigned_to: Optional[uuid.UUID] = None
+
+
+class QuestionResponseDraft(BaseModel):
+    """A drafted answer.
+
+    Carried in the body rather than the query string: an answer in a URL is
+    written to every access log and proxy along the way, and truncated by the
+    first one with a length limit.
+    """
+
+    response: str = Field(..., min_length=1, max_length=20000)
 
 
 class QuestionUpdate(BaseModel):
@@ -573,6 +612,7 @@ class QuestionUpdate(BaseModel):
     category: Optional[str] = Field(None, max_length=100)
     location_state: Optional[str] = Field(None, max_length=50)
     location_lga: Optional[str] = Field(None, max_length=100)
+    geography_id: Optional[uuid.UUID] = None
     assigned_to: Optional[uuid.UUID] = None
 
 

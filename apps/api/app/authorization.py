@@ -85,6 +85,16 @@ class AccessControl:
         """The user's role in one organisation, if any."""
         return self.roles.get(organisation_id)
 
+    def holds_role_anywhere(self, allowed: frozenset) -> bool:
+        """True if the user holds one of ``allowed`` in any organisation.
+
+        For the few things that are not the property of one tenant, such as the
+        inbox of questions the public has submitted but nobody has claimed yet.
+        Deliberately not used for reading tenant data: it says the caller could
+        act somewhere, not that they may act here.
+        """
+        return any(role is Role.SUPER_ADMIN or role in allowed for role in self.roles.values())
+
     def can_access(self, organisation_id: Optional[uuid.UUID]) -> bool:
         """True if the caller may see data belonging to an organisation."""
         if self.is_platform_admin:
