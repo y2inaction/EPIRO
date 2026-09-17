@@ -1,0 +1,32 @@
+# The Dockerfile uses COPY . ., so anything not excluded here lands in the
+# image. Without this file a local virtualenv, caches and any .env would be
+# baked into the published image.
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Virtualenvs and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Test and coverage output
+tests/
+.coverage
+coverage.xml
+htmlcov/
+
+# Tooling that is not needed at runtime
+requirements-dev.txt
+.flake8
+
+# VCS and docs
+.git/
+.gitignore
+*.md

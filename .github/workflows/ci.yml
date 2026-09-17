@@ -22,13 +22,13 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: 'apps/api/requirements.txt'
+          cache-dependency-path: 'apps/api/requirements*.txt'
 
       - name: Install dependencies
         working-directory: ./apps/api
         run: |
           python -m pip install --upgrade pip
-          pip install --prefer-binary -r requirements.txt
+          pip install --prefer-binary -r requirements-dev.txt
 
       - name: Lint with flake8
         working-directory: ./apps/api
@@ -53,13 +53,13 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: 'apps/api/requirements.txt'
+          cache-dependency-path: 'apps/api/requirements*.txt'
 
       - name: Install dependencies
         working-directory: ./apps/api
         run: |
           python -m pip install --upgrade pip
-          pip install --prefer-binary -r requirements.txt
+          pip install --prefer-binary -r requirements-dev.txt
 
       - name: Type check with mypy
         working-directory: ./apps/api
@@ -100,13 +100,13 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: 'apps/api/requirements.txt'
+          cache-dependency-path: 'apps/api/requirements*.txt'
 
       - name: Install dependencies
         working-directory: ./apps/api
         run: |
           python -m pip install --upgrade pip
-          pip install --prefer-binary -r requirements.txt
+          pip install --prefer-binary -r requirements-dev.txt
 
       # Guards the divergence recorded in docs/REBUILD_AUDIT.md section 9.2,
       # where the migration and the models disagreed on a column name. Runs
@@ -191,6 +191,71 @@ jobs:
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=sha
+
+      # The job previously set up buildx and stopped, so it reported success
+      # without ever building. That hid a web Dockerfile which referenced a
+      # public/ directory that does not exist.
+      - name: Build API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/api
+          file: ./apps/api/Dockerfile
+          push: false
+          load: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/api
+          file: ./apps/api/Dockerfile.worker
+          push: false
+          load: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build web image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/web
+          file: ./apps/web/Dockerfile
+          push: false
+          load: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Audit Python dependencies
+        working-directory: ./apps/api
+        run: |
+          python -m pip install --upgrade pip
+          pip install --prefer-binary pip-audit==2.9.0
+          echo "::group::Runtime dependencies"
+          pip-audit -r requirements.txt --desc off
+          echo "::endgroup::"
+          echo "::group::Development dependencies"
+          pip-audit -r requirements-dev.txt --desc off
+          echo "::endgroup::"
+
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Audit npm dependencies
+        working-directory: ./apps/web
+        run: npm audit --audit-level=high
 
   security-scan:
     name: Security Scan
