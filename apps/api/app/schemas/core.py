@@ -18,6 +18,7 @@ from app.models.core import (
     ReadinessStatus,
     SourceReliability,
     SourceType,
+    StoryStatus,
     VerificationState,
 )
 
@@ -536,7 +537,7 @@ class StoryResponse(StoryBase):
     id: uuid.UUID
     organisation_id: uuid.UUID
     evidence_id: uuid.UUID
-    status: str
+    status: StoryStatus
     featured: bool
     published_date: Optional[datetime] = None
     version: int

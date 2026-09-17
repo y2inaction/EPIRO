@@ -35,6 +35,9 @@ PROJECT_EDITORS = frozenset(
     {Role.EVIDENCE_MANAGER, Role.EXECUTIVE, Role.RESEARCHER, Role.FIELD_OFFICER}
 )
 PUBLISHERS = frozenset({Role.CONTENT_MANAGER, Role.EDITOR})
+# Editorial sign-off on public information, kept separate from PUBLISHERS so
+# that approving a story and releasing it are two decisions by two people.
+STORY_APPROVERS = frozenset({Role.APPROVER, Role.EXECUTIVE, Role.EDITOR})
 CONTENT_AUTHORS = frozenset({Role.CONTENT_MANAGER, Role.EDITOR, Role.TRANSLATOR})
 QUESTION_RESPONDERS = frozenset(
     {Role.RESEARCHER, Role.CONTENT_MANAGER, Role.EDITOR, Role.EVIDENCE_MANAGER}

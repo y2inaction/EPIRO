@@ -102,6 +102,22 @@ class EvidenceStatus(str, Enum):
     REJECTED = "rejected"
 
 
+class StoryStatus(str, Enum):
+    """Editorial states a story moves through.
+
+    Spec section 36 puts review and approval between drafting and publication.
+    A free-text status could not express that: the only value anything ever set
+    was "published", so approval and publication were the same act.
+    """
+
+    DRAFT = "draft"
+    IN_REVIEW = "in_review"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+
 class QuestionStatus(str, Enum):
     """Question workflow statuses."""
 
@@ -845,7 +861,11 @@ class Story(TimestampedModel):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     summary: Mapped[Optional[str]] = mapped_column(Text)
     language: Mapped[str] = mapped_column(String(5), default="en", nullable=False)
-    status: Mapped[str] = mapped_column(String(50), default="draft", nullable=False)
+    status: Mapped[StoryStatus] = mapped_column(
+        SQLEnum(StoryStatus, values_callable=_enum_values),
+        default=StoryStatus.DRAFT,
+        nullable=False,
+    )
     featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("user.id"), nullable=True

@@ -10,7 +10,7 @@ import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import EvidenceStatus, Organisation, Role, User
+from app.models import EvidenceStatus, Organisation, Role, StoryStatus, User
 from tests.conftest import (
     auth_header,
     grant_role,
@@ -290,27 +290,30 @@ class TestMassAssignment:
 class TestPublicationGate:
     """Public information must trace back to approved evidence."""
 
-    def test_story_cannot_be_published_while_evidence_is_unapproved(
+    def test_story_cannot_be_approved_while_evidence_is_unapproved(
         self, client: TestClient, db: Session, organisation: Organisation
     ):
         evidence = make_evidence(db, organisation)
-        story = make_story(db, evidence)
-        publisher = member(db, organisation, Role.CONTENT_MANAGER)
+        story = make_story(db, evidence, status=StoryStatus.IN_REVIEW)
+        approver = member(db, organisation, Role.APPROVER)
 
-        response = client.post(
-            f"/api/v1/stories/{story.id}/publish", headers=auth_header(publisher)
-        )
+        response = client.post(f"/api/v1/stories/{story.id}/approve", headers=auth_header(approver))
         assert response.status_code == 409
 
         db.refresh(story)
-        assert story.status == "draft"
+        assert story.status is StoryStatus.IN_REVIEW
 
-    def test_story_publishes_once_evidence_is_approved(
+    def test_story_publishes_once_evidence_and_the_story_are_approved(
         self, client: TestClient, db: Session, organisation: Organisation
     ):
         evidence = make_evidence(db, organisation, status=EvidenceStatus.APPROVED)
-        story = make_story(db, evidence)
+        story = make_story(db, evidence, status=StoryStatus.IN_REVIEW)
+        approver = member(db, organisation, Role.APPROVER)
         publisher = member(db, organisation, Role.CONTENT_MANAGER)
+
+        approved = client.post(f"/api/v1/stories/{story.id}/approve", headers=auth_header(approver))
+        assert approved.status_code == 200
+        assert approved.json()["status"] == "approved"
 
         response = client.post(
             f"/api/v1/stories/{story.id}/publish", headers=auth_header(publisher)
