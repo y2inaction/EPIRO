@@ -1,123 +1,144 @@
 """Global search endpoints."""
 
-from typing import Any, Optional
+import uuid
+from datetime import date
+from typing import Any, Callable, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import or_
-from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session
 
 from app.authorization import AccessControl, get_access
 from app.database import get_db
-from app.models import Evidence, Project, Question, Story
 from app.schemas.core import EvidenceResponse, QuestionResponse, StoryResponse
+from app.services import search as search_service
 
 router = APIRouter()
+
+# The response key each content type is returned under. Kept stable: clients
+# read these names.
+RESULT_KEYS = {
+    search_service.EVIDENCE: "evidence",
+    search_service.STORY: "stories",
+    search_service.QUESTION: "questions",
+    search_service.PROJECT: "projects",
+    search_service.SCENARIO: "scenarios",
+}
+
+
+def _project_summary(item: Any) -> Dict[str, Any]:
+    """Projects have no response schema yet, so return the identifying fields."""
+    return {
+        "id": item.id,
+        "name": item.name,
+        "code": item.code,
+        "description": item.description,
+        "status": item.status.value,
+    }
+
+
+def _scenario_summary(item: Any) -> Dict[str, Any]:
+    """Scenarios have no response schema yet."""
+    return {
+        "id": item.id,
+        "name": item.name,
+        "category": item.category,
+        "status": item.status.value,
+    }
+
+
+SERIALISERS: Dict[str, Callable[[Any], Any]] = {
+    search_service.EVIDENCE: EvidenceResponse.model_validate,
+    search_service.STORY: StoryResponse.model_validate,
+    search_service.QUESTION: QuestionResponse.model_validate,
+    search_service.PROJECT: _project_summary,
+    search_service.SCENARIO: _scenario_summary,
+}
 
 
 @router.get("/")
 async def global_search(
     q: str = Query(..., min_length=1, max_length=200),
-    content_type: Optional[str] = Query(None),  # evidence, story, question, project
+    content_type: Optional[str] = Query(
+        None, description="evidence, story, question, project or scenario"
+    ),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    geography_id: Optional[uuid.UUID] = Query(
+        None, description="Matches the area and everything beneath it"
+    ),
+    thematic_area_id: Optional[uuid.UUID] = Query(None),
+    source_id: Optional[uuid.UUID] = Query(None),
+    status: Optional[str] = Query(None),
+    organisation_id: Optional[uuid.UUID] = Query(None),
+    verification_status: Optional[str] = Query(None),
+    owner_id: Optional[uuid.UUID] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Search across content the caller's organisations own."""
+    """Search content the caller's organisations own.
+
+    Results are ranked by relevance. A content type that cannot express one of
+    the filters is left out of the results entirely rather than returned
+    unfiltered, and ``unsearchable_types`` names the spec section 35 content
+    types that have no entity yet.
+    """
+    empty: Dict[str, Any] = {key: [] for key in RESULT_KEYS.values()}
+    empty["total"] = 0
+    empty["unsearchable_types"] = list(search_service.UNBUILT_TYPES)
+
     organisation_ids = access.organisation_ids
-
-    def scoped(query: SAQuery, model: Any) -> SAQuery:
-        """Restrict a query to the caller's organisations."""
-        if access.is_platform_admin:
-            return query
-        return query.filter(model.organisation_id.in_(organisation_ids))
-
-    evidence_results: list[EvidenceResponse] = []
-    story_results: list[StoryResponse] = []
-    question_results: list[QuestionResponse] = []
-    project_results: list[dict[str, Any]] = []
-    total = 0
 
     # A caller who belongs to no organisation can see nothing.
     if not organisation_ids and not access.is_platform_admin:
-        return {
-            "evidence": evidence_results,
-            "stories": story_results,
-            "questions": question_results,
-            "projects": project_results,
-            "total": total,
-        }
+        return empty
 
-    if not content_type or content_type == "evidence":
-        evidence_query = scoped(
-            db.query(Evidence).filter(
-                or_(
-                    Evidence.title.ilike(f"%{q}%"),
-                    Evidence.description.ilike(f"%{q}%"),
-                )
-            ),
-            Evidence,
+    # A filter naming an organisation the caller is not in must not widen what
+    # they can see; it can only narrow it.
+    if (
+        organisation_id is not None
+        and not access.is_platform_admin
+        and organisation_id not in organisation_ids
+    ):
+        return empty
+
+    tsquery = search_service.build_tsquery(q)
+    if tsquery is None:
+        return empty
+
+    filters = search_service.SearchFilters(
+        date_from=date_from,
+        date_to=date_to,
+        geography_id=geography_id,
+        thematic_area_id=thematic_area_id,
+        source_id=source_id,
+        status=status,
+        organisation_id=organisation_id,
+        verification_status=verification_status,
+        owner_id=owner_id,
+    )
+
+    results: Dict[str, Any] = dict(empty)
+    total = 0
+
+    for type_name in search_service.requested_types(content_type):
+        spec = search_service.SEARCHABLES[type_name]
+        page = search_service.search_type(
+            db,
+            spec,
+            tsquery,
+            filters,
+            organisation_ids,
+            access.is_platform_admin,
+            skip,
+            limit,
         )
-        total += evidence_query.count()
-        evidence_results = [
-            EvidenceResponse.model_validate(item)
-            for item in evidence_query.offset(skip).limit(limit).all()
-        ]
 
-    if not content_type or content_type == "story":
-        story_query = scoped(
-            db.query(Story).filter(
-                or_(
-                    Story.title.ilike(f"%{q}%"),
-                    Story.headline.ilike(f"%{q}%"),
-                    Story.body.ilike(f"%{q}%"),
-                )
-            ),
-            Story,
-        )
-        total += story_query.count()
-        story_results = [
-            StoryResponse.model_validate(item)
-            for item in story_query.offset(skip).limit(limit).all()
-        ]
+        serialise = SERIALISERS[type_name]
+        serialised: List[Any] = [serialise(item) for item in page.items]
+        results[RESULT_KEYS[type_name]] = serialised
+        total += page.total
 
-    if not content_type or content_type == "question":
-        question_query = scoped(
-            db.query(Question).filter(Question.question_text.ilike(f"%{q}%")),
-            Question,
-        )
-        total += question_query.count()
-        question_results = [
-            QuestionResponse.model_validate(item)
-            for item in question_query.offset(skip).limit(limit).all()
-        ]
-
-    if not content_type or content_type == "project":
-        project_query = scoped(
-            db.query(Project).filter(
-                or_(
-                    Project.name.ilike(f"%{q}%"),
-                    Project.description.ilike(f"%{q}%"),
-                )
-            ),
-            Project,
-        )
-        total += project_query.count()
-        project_results = [
-            {
-                "id": item.id,
-                "name": item.name,
-                "code": item.code,
-                "description": item.description,
-            }
-            for item in project_query.offset(skip).limit(limit).all()
-        ]
-
-    return {
-        "evidence": evidence_results,
-        "stories": story_results,
-        "questions": question_results,
-        "projects": project_results,
-        "total": total,
-    }
+    results["total"] = total
+    return results

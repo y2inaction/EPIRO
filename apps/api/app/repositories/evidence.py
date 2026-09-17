@@ -4,11 +4,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.models import Evidence, EvidenceStatus
 from app.repositories.base import BaseRepository
+from app.services.search import build_tsquery
 
 
 class EvidenceRepository(BaseRepository[Evidence]):
@@ -70,18 +71,28 @@ class EvidenceRepository(BaseRepository[Evidence]):
         skip: int = 0,
         limit: int = 100,
     ) -> tuple[List[Evidence], int]:
-        """Search evidence by title or description."""
+        """Search one organisation's evidence, best match first.
+
+        Full text against the stored search vector, which the GIN index can
+        serve. The ILIKE this replaced could not use any index.
+        """
+        tsquery = build_tsquery(query_str)
+        if tsquery is None:
+            return [], 0
+
         q = self.db.query(Evidence).filter(
             and_(
                 Evidence.organisation_id == organisation_id,
-                or_(
-                    Evidence.title.ilike(f"%{query_str}%"),
-                    Evidence.description.ilike(f"%{query_str}%"),
-                ),
+                Evidence.search_vector.op("@@")(tsquery),
             )
         )
         total = q.count()
-        items = q.offset(skip).limit(limit).all()
+        items = (
+            q.order_by(func.ts_rank_cd(Evidence.search_vector, tsquery).desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
         return items, total
 
     def get_verified(

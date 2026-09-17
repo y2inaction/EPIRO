@@ -3,6 +3,7 @@
 from .base import Base, TimestampedModel
 from .core import (
     GEOGRAPHY_LEVEL_ORDER,
+    SEARCH_CONFIG,
     ApprovalDecision,
     ApprovalRecord,
     AuditLog,
@@ -48,6 +49,7 @@ __all__ = [
     "Geography",
     "GeographyLevel",
     "GEOGRAPHY_LEVEL_ORDER",
+    "SEARCH_CONFIG",
     "geography_level_rank",
     "Programme",
     "Project",

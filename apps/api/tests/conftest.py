@@ -51,6 +51,8 @@ def engine() -> Generator[Engine, None, None]:
 
     with test_engine.connect() as connection:
         connection.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        # Backs the gin_trgm_ops indexes; create_all fails without it.
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
         connection.commit()
 
     Base.metadata.drop_all(test_engine)

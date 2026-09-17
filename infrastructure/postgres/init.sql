@@ -9,6 +9,9 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 -- Quoting is required: uuid-ossp is not a valid bare identifier.
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- pg_trgm backs the gin_trgm_ops indexes behind name and directory lookups.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 -- Permissions
 GRANT ALL PRIVILEGES ON SCHEMA public TO epiro;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO epiro;
