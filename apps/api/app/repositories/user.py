@@ -23,7 +23,7 @@ class UserRepository(BaseRepository[User]):
 
     def get_active_users(self, skip: int = 0, limit: int = 100) -> tuple[list[User], int]:
         """Get all active users."""
-        query = self.db.query(User).filter(User.is_active == True)
+        query = self.db.query(User).filter(User.is_active.is_(True))
         total = query.count()
         users = query.offset(skip).limit(limit).all()
         return users, total

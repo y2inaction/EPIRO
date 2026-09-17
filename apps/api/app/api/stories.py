@@ -23,9 +23,6 @@ async def list_stories(
     db: Session = Depends(get_db),
 ):
     """List stories with filters."""
-    story_repo = BaseRepository(db, Story)
-
-    # Build filter kwargs
     filters = {"language": language}
     if featured_only:
         filters["featured"] = True

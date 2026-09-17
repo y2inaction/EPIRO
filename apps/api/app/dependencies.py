@@ -64,8 +64,6 @@ async def get_current_admin_user(
     current_user: User = Depends(get_current_user),
 ) -> User:
     """Get current user and verify admin role."""
-    from app.models import Role
-
     # Check if user has admin role in any organisation
     # For now, just require super_admin
     # This will be enhanced with organisation-scoped RBAC

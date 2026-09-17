@@ -14,12 +14,13 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def hash_password(password: str) -> str:
     """Hash a password."""
-    return pwd_context.hash(password)
+    # passlib ships no type information, so coerce at the boundary.
+    return str(pwd_context.hash(password))
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    return bool(pwd_context.verify(plain_password, hashed_password))
 
 
 def create_access_token(user_id: str, expires_delta: Optional[timedelta] = None) -> str:

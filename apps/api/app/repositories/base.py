@@ -1,6 +1,6 @@
 """Base repository class for common CRUD operations."""
 
-from typing import Any, Generic, List, Optional, Type, TypeVar
+from typing import Generic, List, Optional, Type, TypeVar
 from uuid import UUID
 
 from sqlalchemy import desc

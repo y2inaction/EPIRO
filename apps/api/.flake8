@@ -1,0 +1,15 @@
+[flake8]
+max-line-length = 100
+# E203 and W503 conflict with Black's formatting; E704 conflicts with its
+# handling of overload stubs.
+extend-ignore = E203, W503, E704
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    .mypy_cache,
+    .pytest_cache,
+    alembic/versions,
+    build,
+    dist
+max-complexity = 12

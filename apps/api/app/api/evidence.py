@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import Evidence, Organisation, Project, Source, User
+from app.models import Organisation, Source, User
 from app.repositories.base import BaseRepository
 from app.repositories.evidence import EvidenceRepository
 from app.schemas.core import EvidenceCreate, EvidenceResponse
