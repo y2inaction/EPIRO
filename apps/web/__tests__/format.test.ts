@@ -1,5 +1,6 @@
 import {
   excerpt,
+  findingLabel,
   formatCount,
   formatDate,
   isoDate,
@@ -100,5 +101,48 @@ describe('verificationLabel', () => {
 
   it('falls back readably for a state it does not know', () => {
     expect(verificationLabel('some_new_state').label).toBe('some new state')
+  })
+})
+
+
+describe('findingLabel', () => {
+  const FINDINGS = [
+    'accurate',
+    'misleading',
+    'out_of_context',
+    'false',
+    'unsubstantiated',
+    'unresolved',
+  ]
+
+  it('never describes the people who repeated a claim', () => {
+    // Spec section 4 forbids profiling citizens, and wording is where that
+    // leaks first: a finding is about information, never about an audience.
+    for (const finding of FINDINGS) {
+      const wording = `${findingLabel(finding).label} ${findingLabel(finding).meaning}`
+      expect(wording).not.toMatch(/\bspread by\b/i)
+      expect(wording).not.toMatch(/\btargeted\b/i)
+      expect(wording).not.toMatch(/\baudience\b/i)
+      expect(wording).not.toMatch(/\bthey believe\b/i)
+    }
+  })
+
+  it('keeps unsubstantiated distinct from false', () => {
+    // "Nothing supports it" and "it does not hold up" are different findings,
+    // and collapsing them would overstate what was established.
+    expect(findingLabel('unsubstantiated').meaning).toContain('not the same as disproved')
+    expect(findingLabel('false').meaning).toContain('does not hold up')
+  })
+
+  it('states unresolved as unsettled rather than as a soft no', () => {
+    const { label, meaning, tone } = findingLabel('unresolved')
+
+    expect(label).toBe('Unresolved')
+    expect(meaning).toContain('could not be settled')
+    expect(tone).toBe('pending')
+  })
+
+  it('falls back readably for a finding it does not know', () => {
+    expect(findingLabel('some_new_finding').label).toBe('some new finding')
   })
 })

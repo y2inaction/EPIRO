@@ -20,8 +20,8 @@ contradicts this file, this file is right and the other one is stale.
 ## At a glance
 
 - 21 database tables, one Alembic history, no schema drift (`alembic check`).
-- 103 API operations across 15 routers.
-- 281 backend tests at 87% line coverage, plus 86 frontend tests.
+- 117 API operations across 16 routers.
+- 315 backend tests at 88% line coverage, plus 96 frontend tests.
 - Seven CI jobs green: lint and format, type check, backend tests, frontend
   tests, Docker build, dependency audit, security scan.
 
@@ -47,10 +47,11 @@ contradicts this file, this file is right and the other one is stale.
 | § | Capability | Status | Notes |
 |---|---|---|---|
 | 13 | Story engine | **CONFIRMED** | Draft → review → approved → published, with approval and publication as separate acts by separate people. |
-| 14 | Public portal | **CONFIRMED** | Unauthenticated API plus a front end: portal home, stories, the evidence register addressed by permanent reference, published answers and search. |
+| 14 | Public portal | **CONFIRMED** | Unauthenticated API plus a front end: portal home, stories, the evidence register addressed by permanent reference, published answers, published corrections and search. |
 | 15 | Citizen questions | **CONFIRMED** | Public submission, triage, research, response, approval, publication, closure. |
 | 16 | Multilingual | **PARTIAL** | Content carries a language code and can be filtered by it. Translations of the same story are **not linked to each other**, and there is no translation workflow. |
-| 35 | Global search | **PARTIAL** | Full-text with ranking and all eight filters across evidence, projects, stories, questions and scenarios. The other content types section 35 names — documents, stakeholders, field missions, intelligence, media, tasks — have no entity yet, and the API says so in its `unsearchable_types` field. |
+| 35 | Global search | **PARTIAL** | Full-text with ranking and all eight filters across evidence, projects, stories, questions, scenarios and integrity signals. The other content types section 35 names — documents, stakeholders, field missions, intelligence, media, tasks — have no entity yet, and the API says so in its `unsearchable_types` field. |
+| 25–26 | Information integrity | **PARTIAL** | A claim circulating in public is logged, assessed with a finding **and** its reasoning, approved by someone other than the assessor, answered publicly by someone other than the approver, and withdrawn rather than deleted. A determination cannot be approved unless it cites evidence the organisation has itself approved; `unresolved` is the one exempt finding, because it asserts nothing to source. Published corrections are on the portal with their reasoning and evidence citation. **Not built:** public submission of a signal, staged review, a staff screen (the workflow is API-only), and any automated detection — nothing scans or scores anything. See [INFORMATION_INTEGRITY.md](INFORMATION_INTEGRITY.md). |
 | 36 | Approval engine | **PARTIAL** | Approvals are recorded with reviewer, timestamp, decision, comments and the version reviewed, across evidence, stories and questions. An organisation defines its own **review stages** for evidence, and each cleared stage is named on the trail. Two limits: the coarse lifecycle is deliberately fixed so an organisation cannot redefine what "published" means to the public, and staged review is wired into **evidence only** — stories and questions keep the single implicit stage. |
 
 ### Not started
@@ -67,7 +68,6 @@ visible rather than implied by absence.
 | 21 | Intelligence workspace | **NOT BUILT** |
 | 22 | Executive dashboard | **NOT BUILT** |
 | 23–24 | Operating rhythm workflows | **NOT BUILT** |
-| 25–26 | Information integrity | **NOT BUILT** — the `integrity_signal` table exists but nothing reads or writes it. |
 | 27 | Creative layer | **NOT BUILT** |
 | 28–31 | Readiness and scenarios | **NOT BUILT** — the `scenario` table exists and is searchable, but there is no readiness workflow. |
 | 32 | AI assistant | **NOT BUILT** |
@@ -86,10 +86,11 @@ visible rather than implied by absence.
 
 **PARTIAL.**
 
-**CONFIRMED:** the public portal (seven routes) and the staff workspace —
-sign-in, plus evidence, story and question screens. Each record page offers
-exactly the workflow actions that person's role and that record's state allow,
-and says what the record is waiting for when they can do nothing.
+**CONFIRMED:** the public portal (nine routes, including published corrections)
+and the staff workspace — sign-in, plus evidence, story and question screens.
+Each record page offers exactly the workflow actions that person's role and
+that record's state allow, and says what the record is waiting for when they
+can do nothing.
 
 Verified against a running stack by driving all three workflows end to end as
 four different people, including every separation of duties: a verifier
@@ -101,8 +102,9 @@ The session token is held in an httpOnly cookie, so page script cannot read
 it and every authenticated call happens on the server.
 
 **NOT BUILT:** creating evidence or drafting a story in the interface (both
-exist in the API), project and programme management, user administration, and
-any dashboard.
+exist in the API), the integrity workflow as a staff screen (the API is
+complete and exercised end to end; only the public side has a front end),
+project and programme management, user administration, and any dashboard.
 
 ---
 
@@ -123,6 +125,14 @@ decision, not an oversight:
 Section 20's limit on collection is enforced in code: an anonymous question
 cannot carry a contact address, and the audit entry for a public submission
 records neither the submitter nor the text of what they asked.
+
+The information integrity feature (§25–26) is where these prohibitions are
+easiest to break, because the obvious next feature is always "who is spreading
+this". The `integrity_signal` table therefore has **no column** for an account,
+a handle, an audience, a segment or a person, and a test asserts that none has
+appeared. The public wording is held to the same line by a test that no
+finding's description says "spread by", "targeted" or "audience". The record is
+about information; the people carrying it are not the platform's business.
 
 ---
 

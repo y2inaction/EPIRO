@@ -117,10 +117,14 @@ EPIRO/
 - Multilingual questions
 
 ### Information Integrity
-- Signal detection and verification
-- Rapid response workflows
-- Priority classification
-- Impact assessment
+- Circulating claims logged, assessed and answered publicly
+- Every finding cites the evidence it rests on
+- Priority classification and impact assessment
+- Published corrections on the portal, withdrawable at once
+
+Deliberately absent: anything that profiles the people who repeat a claim. The
+record is about information — see
+[docs/INFORMATION_INTEGRITY.md](docs/INFORMATION_INTEGRITY.md).
 
 ### Intelligence & Analytics
 - Evidence dashboard
@@ -136,19 +140,28 @@ EPIRO/
 
 ## API Endpoints
 
-All endpoints at `/api/v1/`:
+All endpoints at `/api/v1/`. This list is what exists today; the feature
+sections above describe the product as a whole, and
+[docs/STATUS.md](docs/STATUS.md) says which parts of it are built.
 
 - `/auth/` - Authentication
 - `/users/` - User management
-- `/organisations/` - Organization management
+- `/organisations/` - Organisation management
+- `/geography/` - Geographic hierarchy
+- `/thematic-areas/` - Thematic taxonomy
+- `/programmes/` - Programmes
+- `/projects/` - Projects, milestones and indicators
+- `/sources/` - Source registry
 - `/evidence/` - Evidence registry
 - `/stories/` - Public information
 - `/questions/` - Citizen questions
-- `/field-missions/` - Field operations
 - `/integrity/` - Information integrity
-- `/intelligence/` - Intelligence reports
-- `/scenarios/` - Readiness scenarios
+- `/workflows/` - Configurable review stages
 - `/search/` - Global search
+- `/public/` - The public portal (no authentication)
+
+Not yet built, and so not listed above: field missions, intelligence reports
+and readiness scenarios.
 
 ## Development
 

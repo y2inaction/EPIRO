@@ -71,6 +71,30 @@ export interface PublicQuestion {
   organisation: PublicOrganisation | null
 }
 
+/**
+ * A published finding about a claim that was circulating.
+ *
+ * Carries the reasoning as well as the verdict. A correction a reader cannot
+ * check is an assertion, so `assessment` and `evidence_reference` are part of
+ * what is published, not internal notes.
+ *
+ * Nobody is named — not the reviewers, and not whoever was repeating the
+ * claim. `source` is a channel, as the API records it.
+ */
+export interface PublicCorrection {
+  id: string
+  claim: string
+  finding: string
+  assessment: string | null
+  response: string | null
+  source: string | null
+  first_observed: string | null
+  published_at: string | null
+  language: string
+  evidence_reference: string | null
+  organisation: PublicOrganisation | null
+}
+
 export interface Page<T> {
   total: number
   page: number
@@ -83,6 +107,7 @@ export interface SearchResults {
   stories: PublicStory[]
   evidence: PublicEvidence[]
   questions: PublicQuestion[]
+  corrections: PublicCorrection[]
   total: number
 }
 
@@ -204,6 +229,24 @@ export function listQuestions(
       organisation_id: options.organisationId,
     })}`,
   )
+}
+
+export function listCorrections(
+  options: ListOptions = {},
+): Promise<Result<Page<PublicCorrection>>> {
+  const { limit, skip } = paging(options)
+  return get<Page<PublicCorrection>>(
+    `/corrections${query({
+      limit,
+      skip,
+      language: options.language,
+      organisation_id: options.organisationId,
+    })}`,
+  )
+}
+
+export function getCorrection(id: string): Promise<Result<PublicCorrection>> {
+  return get<PublicCorrection>(`/corrections/${encodeURIComponent(id)}`)
 }
 
 export function search(term: string): Promise<Result<SearchResults>> {

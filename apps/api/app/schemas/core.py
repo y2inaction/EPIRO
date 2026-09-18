@@ -11,7 +11,9 @@ from app.models.core import (
     ApprovalDecision,
     EvidenceStatus,
     GeographyLevel,
+    IntegrityFinding,
     IntegritySignalPriority,
+    IntegritySignalStatus,
     MilestoneStatus,
     ProjectStatus,
     QuestionStatus,
@@ -639,28 +641,102 @@ class QuestionResponse(QuestionBase):
 
 
 class IntegritySignalBase(BaseModel):
-    """Base integrity signal schema."""
+    """A claim circulating in public, described as information.
 
-    claim: str = Field(..., min_length=1)
-    source: Optional[str] = None
+    Every field here is about the claim or the channel carrying it. There is
+    deliberately no field naming a person who spread it: spec section 4 forbids
+    profiling citizens, and a schema that accepted such a field would be the
+    first place the prohibition leaked.
+    """
+
+    claim: str = Field(..., min_length=1, max_length=5000)
+    source: Optional[str] = Field(
+        None,
+        max_length=255,
+        description="The channel it was observed on, not the person who posted it",
+    )
+    circulation: Optional[str] = Field(
+        None,
+        max_length=5000,
+        description="How and where it is spreading, described as channels",
+    )
+    first_observed: Optional[date] = None
+    language: str = Field("en", max_length=5)
+    geography_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
 
 
 class IntegritySignalCreate(IntegritySignalBase):
-    """Integrity signal creation schema."""
+    """Log a claim that needs looking at."""
 
-    organisation_id: Optional[uuid.UUID] = None
+    organisation_id: uuid.UUID
+    priority: IntegritySignalPriority = IntegritySignalPriority.LOW_RISK
+    assigned_to: Optional[uuid.UUID] = None
+
+
+class IntegritySignalUpdate(BaseModel):
+    """Revise the description of a signal.
+
+    Editing what the claim says invalidates any assessment of it, because the
+    assessment answered the old wording. The API raises the version and sends
+    the record back accordingly.
+    """
+
+    claim: Optional[str] = Field(None, min_length=1, max_length=5000)
+    source: Optional[str] = Field(None, max_length=255)
+    circulation: Optional[str] = Field(None, max_length=5000)
+    first_observed: Optional[date] = None
+    language: Optional[str] = Field(None, max_length=5)
+    geography_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    priority: Optional[IntegritySignalPriority] = None
+    assigned_to: Optional[uuid.UUID] = None
+
+
+class IntegrityAssessment(BaseModel):
+    """What was found out about a claim, and why.
+
+    Both fields are required together. A finding with no reasoning is an
+    unexplainable verdict, which spec section 4 rules out; reasoning with no
+    finding leaves the record unable to say what it concluded.
+    """
+
+    finding: IntegrityFinding
+    assessment: str = Field(..., min_length=1, max_length=20000)
+    impact: Optional[str] = Field(None, max_length=20000)
+    evidence_id: Optional[uuid.UUID] = Field(
+        None,
+        description="The evidence record the finding rests on",
+    )
+
+
+class IntegrityResponseDraft(BaseModel):
+    """The correction the body intends to put out."""
+
+    response: str = Field(..., min_length=1, max_length=20000)
 
 
 class IntegritySignalResponse(IntegritySignalBase):
-    """Integrity signal response schema."""
+    """An integrity signal as the workspace sees it."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    organisation_id: uuid.UUID
     priority: IntegritySignalPriority
-    status: str
-    verification_result: Optional[str] = None
+    status: IntegritySignalStatus
+    assigned_to: Optional[uuid.UUID] = None
+    finding: Optional[IntegrityFinding] = None
+    assessment: Optional[str] = None
+    impact: Optional[str] = None
+    evidence_id: Optional[uuid.UUID] = None
+    assessed_by: Optional[uuid.UUID] = None
+    assessed_at: Optional[datetime] = None
     response: Optional[str] = None
+    approved_by: Optional[uuid.UUID] = None
+    approved_at: Optional[datetime] = None
+    published_at: Optional[datetime] = None
+    version: int
     created_at: datetime
     updated_at: datetime
 

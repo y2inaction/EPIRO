@@ -141,6 +141,44 @@ class IntegritySignalPriority(str, Enum):
     NATIONAL = "national"
 
 
+class IntegritySignalStatus(str, Enum):
+    """States an integrity signal moves through (spec sections 25-26).
+
+    The previous column was free text with a default of "new" and nothing that
+    ever changed it, so no signal could move at all.
+    """
+
+    NEW = "new"
+    ASSESSING = "assessing"
+    ASSESSED = "assessed"
+    APPROVED = "approved"
+    PUBLISHED = "published"
+    WITHDRAWN = "withdrawn"
+    CLOSED = "closed"
+
+
+class IntegrityFinding(str, Enum):
+    """What an assessment concluded **about a claim**.
+
+    Every value describes the information, never the people carrying it. Spec
+    section 4 forbids profiling citizens, and a finding about a person is what
+    that prohibition is for: the platform records that something circulating is
+    false, not who is gullible enough to repeat it.
+
+    ``UNRESOLVED`` is deliberately available and deliberately publishable. An
+    assessment that could not settle a claim has to be able to say so; the
+    alternative is a system in which the only recordable outcome is a verdict,
+    which is how unverified verdicts get recorded.
+    """
+
+    ACCURATE = "accurate"
+    MISLEADING = "misleading"
+    OUT_OF_CONTEXT = "out_of_context"
+    FALSE = "false"
+    UNSUBSTANTIATED = "unsubstantiated"
+    UNRESOLVED = "unresolved"
+
+
 class ReadinessStatus(str, Enum):
     """Readiness matrix status."""
 
@@ -956,33 +994,101 @@ class Question(TimestampedModel):
 
 
 class IntegritySignal(TimestampedModel):
-    """Information integrity signal model."""
+    """A claim circulating in public, and what was found out about it.
+
+    Spec sections 25-26. The record is about **information**, and the columns
+    are chosen so that it cannot quietly become about people. There is no
+    column for who spread a claim, no account handle, no audience segment and
+    no demographic breakdown — section 4 forbids profiling citizens, and the
+    surest way to honour that is to leave nowhere to put it. ``source`` and
+    ``circulation`` describe a channel ("a voice note forwarded on WhatsApp in
+    Bida", "a headline in a state daily"), not a person.
+
+    ``finding`` is the conclusion; ``assessment`` is the reasoning behind it.
+    They are separate columns because a verdict with no reasoning is exactly
+    the kind of unexplainable intelligence section 4 rules out, and the API
+    refuses to record one without the other.
+    """
 
     __tablename__ = "integrity_signal"
 
-    organisation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=True
+    # Non-null, unlike a citizen question: a signal is logged by a member of
+    # staff who already belongs to a body, so there is never a moment where it
+    # belongs to nobody.
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False
     )
     claim: Mapped[str] = mapped_column(Text, nullable=False)
+    # Where it was seen, as a channel. See the class docstring.
     source: Mapped[Optional[str]] = mapped_column(String(255))
+    circulation: Mapped[Optional[str]] = mapped_column(Text)
+    first_observed: Mapped[Optional[date]] = mapped_column(Date)
+    language: Mapped[str] = mapped_column(String(5), default="en", nullable=False)
+    geography_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("geographic_area.id"), nullable=True
+    )
+    thematic_area_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("thematic_area.id"), nullable=True
+    )
     priority: Mapped[IntegritySignalPriority] = mapped_column(
         SQLEnum(IntegritySignalPriority, values_callable=_enum_values),
         default=IntegritySignalPriority.LOW_RISK,
         nullable=False,
     )
-    status: Mapped[str] = mapped_column(String(50), default="new", nullable=False)
+    status: Mapped[IntegritySignalStatus] = mapped_column(
+        SQLEnum(IntegritySignalStatus, values_callable=_enum_values),
+        default=IntegritySignalStatus.NEW,
+        nullable=False,
+    )
     assigned_to: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
     )
-    verification_result: Mapped[Optional[str]] = mapped_column(Text)
+    finding: Mapped[Optional[IntegrityFinding]] = mapped_column(
+        SQLEnum(IntegrityFinding, values_callable=_enum_values), nullable=True
+    )
+    assessment: Mapped[Optional[str]] = mapped_column(Text)
+    impact: Mapped[Optional[str]] = mapped_column(Text)
+    # The evidence the finding rests on. Optional on the record because an
+    # assessment is drafted before it is cited; the API requires it before a
+    # determination can be approved.
+    evidence_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("evidence.id"), nullable=True
+    )
+    # Recorded separately from updated_by so approval can require a different
+    # person from whoever wrote the assessment.
+    assessed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+    assessed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     response: Mapped[Optional[str]] = mapped_column(Text)
     approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    organisation: Mapped["Organisation"] = relationship()
+    evidence: Mapped[Optional["Evidence"]] = relationship()
+
+    search_vector: Mapped[Optional[str]] = mapped_column(
+        TSVECTOR,
+        _search_vector(
+            ("claim", "A"),
+            ("assessment", "B"),
+            ("response", "B"),
+            ("circulation", "C"),
+        ),
+        nullable=True,
+        deferred=True,
     )
 
     __table_args__ = (
         Index("idx_integrity_priority", "priority"),
         Index("idx_integrity_status", "status"),
+        Index("idx_integrity_organisation_id", "organisation_id"),
+        Index("idx_integrity_geography_id", "geography_id"),
+        Index("idx_integrity_search", "search_vector", postgresql_using="gin"),
     )
 
 

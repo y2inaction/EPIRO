@@ -26,6 +26,8 @@ from app.database import get_db
 from app.models import (
     Evidence,
     EvidenceStatus,
+    IntegritySignal,
+    IntegritySignalStatus,
     Organisation,
     Question,
     QuestionStatus,
@@ -34,6 +36,7 @@ from app.models import (
 )
 from app.rate_limit import PUBLIC_READ_LIMIT, limiter
 from app.schemas.public import (
+    PublicCorrection,
     PublicEvidence,
     PublicOrganisation,
     PublicPage,
@@ -73,6 +76,15 @@ def _question(question: Question) -> PublicQuestion:
     """Serialise a published question and its answer."""
     public = PublicQuestion.model_validate(question)
     public.organisation = _organisation(question.organisation)
+    return public
+
+
+def _correction(signal: IntegritySignal) -> PublicCorrection:
+    """Serialise a published integrity finding, with its evidence citation."""
+    public = PublicCorrection.model_validate(signal)
+    public.finding = signal.finding.value if signal.finding else ""
+    public.organisation = _organisation(signal.organisation)
+    public.evidence_reference = signal.evidence.reference if signal.evidence else None
     return public
 
 
@@ -240,6 +252,61 @@ async def get_public_question(
     return _question(question)
 
 
+def _published_corrections(db: Session):
+    """Integrity findings whose corrections were approved and published.
+
+    A withdrawn correction is not published, so it drops out here the moment it
+    is taken back. This matters more than it does elsewhere on the portal: a
+    correction that turns out to be wrong is the worst thing to leave standing.
+    """
+    return db.query(IntegritySignal).filter(
+        IntegritySignal.status == IntegritySignalStatus.PUBLISHED
+    )
+
+
+@router.get("/corrections", response_model=dict)
+@limiter.limit(PUBLIC_READ_LIMIT)
+async def list_public_corrections(
+    request: Request,
+    language: Optional[str] = Query(None, max_length=5),
+    organisation_id: Optional[uuid.UUID] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    """The public record of what was found out about circulating claims."""
+    query = _published_corrections(db)
+
+    if language:
+        query = query.filter(IntegritySignal.language == language)
+    if organisation_id:
+        query = query.filter(IntegritySignal.organisation_id == organisation_id)
+
+    total = query.count()
+    signals = (
+        query.order_by(IntegritySignal.published_at.desc().nullslast())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    return _page(total, skip, limit, [_correction(signal) for signal in signals])
+
+
+@router.get("/corrections/{signal_id}", response_model=PublicCorrection)
+@limiter.limit(PUBLIC_READ_LIMIT)
+async def get_public_correction(
+    request: Request,
+    signal_id: uuid.UUID,
+    db: Session = Depends(get_db),
+):
+    """One published correction."""
+    signal = _published_corrections(db).filter(IntegritySignal.id == signal_id).first()
+    if signal is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Correction not found")
+    return _correction(signal)
+
+
 @router.get("/search", response_model=dict)
 @limiter.limit(PUBLIC_READ_LIMIT)
 async def public_search(
@@ -255,7 +322,13 @@ async def public_search(
     restricted to what has been published, so nothing under review can be
     discovered by guessing at search terms.
     """
-    empty: Dict[str, Any] = {"stories": [], "evidence": [], "questions": [], "total": 0}
+    empty: Dict[str, Any] = {
+        "stories": [],
+        "evidence": [],
+        "questions": [],
+        "corrections": [],
+        "total": 0,
+    }
 
     tsquery = build_tsquery(q)
     if tsquery is None:
@@ -284,12 +357,23 @@ async def public_search(
         .limit(limit)
         .all()
     )
+    correction_query = _published_corrections(db).filter(
+        IntegritySignal.search_vector.op("@@")(tsquery)
+    )
+    if language:
+        correction_query = correction_query.filter(IntegritySignal.language == language)
+    corrections = (
+        correction_query.order_by(func.ts_rank_cd(IntegritySignal.search_vector, tsquery).desc())
+        .limit(limit)
+        .all()
+    )
 
     return {
         "stories": [_story(story).model_dump(mode="json") for story in stories],
         "evidence": [_evidence(record).model_dump(mode="json") for record in records],
         "questions": [_question(question).model_dump(mode="json") for question in questions],
-        "total": len(stories) + len(records) + len(questions),
+        "corrections": [_correction(signal).model_dump(mode="json") for signal in corrections],
+        "total": len(stories) + len(records) + len(questions) + len(corrections),
     }
 
 
@@ -311,6 +395,9 @@ async def list_public_organisations(
         .union(
             select(Evidence.organisation_id).where(Evidence.status == EvidenceStatus.PUBLISHED),
             select(Question.organisation_id).where(Question.status == QuestionStatus.PUBLISHED),
+            select(IntegritySignal.organisation_id).where(
+                IntegritySignal.status == IntegritySignalStatus.PUBLISHED
+            ),
         )
     )
 

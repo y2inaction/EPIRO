@@ -1,4 +1,4 @@
-import { verificationLabel } from '@/lib/format'
+import { findingLabel, verificationLabel } from '@/lib/format'
 
 const TONE_CLASSES: Record<string, string> = {
   checked:
@@ -26,8 +26,37 @@ export function VerificationBadge({
   status: string
   withMeaning?: boolean
 }) {
-  const { label, meaning, tone } = verificationLabel(status)
+  return <Badge {...verificationLabel(status)} withMeaning={withMeaning} />
+}
 
+/**
+ * What an assessment concluded about a circulating claim.
+ *
+ * Shares the badge with verification for the same reason: the word carries the
+ * meaning, not the colour. A reader looking at a red pill should see "False"
+ * and, if they ask for it, what that was decided against.
+ */
+export function FindingBadge({
+  finding,
+  withMeaning = false,
+}: {
+  finding: string
+  withMeaning?: boolean
+}) {
+  return <Badge {...findingLabel(finding)} withMeaning={withMeaning} />
+}
+
+function Badge({
+  label,
+  meaning,
+  tone,
+  withMeaning,
+}: {
+  label: string
+  meaning: string
+  tone: string
+  withMeaning: boolean
+}) {
   return (
     <span className="inline-flex flex-col gap-1">
       <span

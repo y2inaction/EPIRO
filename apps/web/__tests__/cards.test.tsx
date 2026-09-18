@@ -1,8 +1,13 @@
 import { render, screen } from '@testing-library/react'
 
-import { EvidenceCard, QuestionCard, StoryCard } from '@/components/Cards'
-import { VerificationBadge } from '@/components/VerificationBadge'
-import type { PublicEvidence, PublicQuestion, PublicStory } from '@/lib/api'
+import { CorrectionCard, EvidenceCard, QuestionCard, StoryCard } from '@/components/Cards'
+import { FindingBadge, VerificationBadge } from '@/components/VerificationBadge'
+import type {
+  PublicCorrection,
+  PublicEvidence,
+  PublicQuestion,
+  PublicStory,
+} from '@/lib/api'
 
 const story: PublicStory = {
   id: 'story-1',
@@ -38,6 +43,20 @@ const question: PublicQuestion = {
   response: 'It was rehabilitated in June.',
   response_date: '2026-06-10T00:00:00Z',
   language: 'en',
+  organisation: { id: 'org-1', name: 'Water Directorate', code: 'water' },
+}
+
+const correction: PublicCorrection = {
+  id: 'correction-1',
+  claim: 'The borehole programme was cancelled and the money returned.',
+  finding: 'false',
+  assessment: 'The programme\u2019s milestone records show it is running.',
+  response: 'The programme is running; twelve boreholes were completed in June.',
+  source: 'Voice notes forwarded on WhatsApp',
+  first_observed: '2026-06-02',
+  published_at: '2026-06-12T00:00:00Z',
+  language: 'en',
+  evidence_reference: 'EV-2026-000001',
   organisation: { id: 'org-1', name: 'Water Directorate', code: 'water' },
 }
 
@@ -124,5 +143,53 @@ describe('VerificationBadge', () => {
     render(<VerificationBadge status="brand_new" />)
 
     expect(screen.getByText('brand new')).toBeInTheDocument()
+  })
+})
+
+
+describe('CorrectionCard', () => {
+  it('shows the finding beside the claim, so the claim is not read as the body\u2019s own', () => {
+    render(<CorrectionCard correction={correction} />)
+
+    expect(screen.getByText('False')).toBeInTheDocument()
+    expect(screen.getByText(/Claim:/)).toBeInTheDocument()
+  })
+
+  it('links to the evidence the finding rests on', () => {
+    render(<CorrectionCard correction={correction} />)
+
+    const link = screen.getByRole('link', { name: 'EV-2026-000001' })
+    expect(link).toHaveAttribute('href', '/evidence/EV-2026-000001')
+  })
+
+  it('describes the channel it was seen on, never a person', () => {
+    render(<CorrectionCard correction={correction} />)
+
+    expect(screen.getByText(/Seen on Voice notes forwarded on WhatsApp/)).toBeInTheDocument()
+  })
+
+  it('omits the citation when a finding asserted nothing to source', () => {
+    render(
+      <CorrectionCard
+        correction={{ ...correction, finding: 'unresolved', evidence_reference: null }}
+      />,
+    )
+
+    expect(screen.queryByText(/Assessed against/)).not.toBeInTheDocument()
+    expect(screen.getByText('Unresolved')).toBeInTheDocument()
+  })
+})
+
+describe('FindingBadge', () => {
+  it('can carry its meaning as visible text', () => {
+    render(<FindingBadge finding="unsubstantiated" withMeaning />)
+
+    expect(screen.getByText(/not the same as disproved/)).toBeInTheDocument()
+  })
+
+  it('renders an unknown finding without crashing', () => {
+    render(<FindingBadge finding="newly_invented" />)
+
+    expect(screen.getByText('newly invented')).toBeInTheDocument()
   })
 })

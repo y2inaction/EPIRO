@@ -35,6 +35,7 @@ outranks a passing mention deep in a body:
 | story | title, headline | summary | body |
 | question | question_text | response | category |
 | scenario | name | description | trigger |
+| integrity_signal | claim | assessment, response | circulation |
 
 Evidence includes its permanent reference in the vector, so a record is
 findable by the identifier it is cited by.
@@ -61,16 +62,20 @@ user text out of tsquery's own operator syntax too.
 All eight filters section 35 names are implemented. A filter applies where the
 content type can express it:
 
-| Filter | evidence | project | story | question | scenario |
-|---|:-:|:-:|:-:|:-:|:-:|
-| date | ✓ | ✓ | ✓ | ✓ | ✓ |
-| geography | ✓ | ✓ | — | ✓ | — |
-| theme | ✓ | — | — | — | — |
-| source | ✓ | — | — | — | — |
-| status | ✓ | ✓ | ✓ | ✓ | ✓ |
-| organisation | ✓ | ✓ | ✓ | ✓ | ✓ |
-| verification | ✓ | — | — | — | — |
-| owner | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Filter | evidence | project | story | question | scenario | integrity_signal |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| date | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| geography | ✓ | ✓ | — | ✓ | — | ✓ |
+| theme | ✓ | — | — | — | — | ✓ |
+| source | ✓ | — | — | — | — | — |
+| status | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| organisation | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| verification | ✓ | — | — | — | — | — |
+| owner | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+An integrity signal's channel is recorded as prose, not chosen from the source
+registry, so it has no `source` filter: a source-filtered search leaves signals
+out rather than returning them as though the filter had matched.
 
 **A type that cannot express a filter that was set is left out of the results
 entirely**, rather than returned unfiltered. Returning it would present those

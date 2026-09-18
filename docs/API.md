@@ -666,6 +666,117 @@ Response: 200 OK
 }
 ```
 
+### Information integrity (`/integrity`)
+
+Spec sections 25-26. A claim circulating in public, what was found out about it,
+and the correction that answers it. See
+[INFORMATION_INTEGRITY.md](INFORMATION_INTEGRITY.md) for the rules.
+
+The record describes information, never the people carrying it: `source` and
+`circulation` are channels, and there is no field for who spread anything.
+
+#### Log a circulating claim
+```
+POST /integrity/
+Authorization: Bearer <monitor_token>
+{
+  "organisation_id": "uuid",
+  "claim": "The borehole programme in Bida was cancelled and the money returned.",
+  "source": "Voice notes forwarded on WhatsApp",
+  "circulation": "Forwarded in community groups across three LGAs.",
+  "first_observed": "2026-08-02",
+  "priority": "material"
+}
+
+Response: 201 Created
+{ ...signal with status = "new", finding = null... }
+```
+
+#### Record a finding
+```
+POST /integrity/{signal_id}/assess
+Authorization: Bearer <assessor_token>
+{
+  "finding": "false",
+  "assessment": "The programme's milestone records show 14 boreholes completed in August.",
+  "evidence_id": "uuid"
+}
+
+Response: 200 OK
+{ ...signal with status = "assessed"... }
+```
+
+The finding and the reasoning are one request: a verdict with no reasoning
+cannot be expressed. `finding` is one of `accurate`, `misleading`,
+`out_of_context`, `false`, `unsubstantiated` or `unresolved`.
+
+#### Draft the correction
+```
+POST /integrity/{signal_id}/respond
+Authorization: Bearer <assessor_token>
+{ "response": "The programme is running. Fourteen boreholes were completed in August." }
+
+Response: 200 OK
+```
+
+#### Approve the finding
+```
+POST /integrity/{signal_id}/approve
+Authorization: Bearer <approver_token>
+{ "comments": "Checked against the register." }
+
+Response: 200 OK
+{ ...signal with status = "approved"... }
+
+400 — the finding names a determination but cites no evidence
+409 — the cited evidence has not itself been approved
+403 — the person who wrote the assessment may not approve it
+```
+
+#### Reject
+```
+POST /integrity/{signal_id}/reject
+Authorization: Bearer <approver_token>
+{ "comments": "The milestone records cited do not cover August." }
+
+Response: 200 OK
+{ ...signal back at status = "assessing", approval cleared... }
+```
+
+#### Publish the correction
+```
+POST /integrity/{signal_id}/publish
+Authorization: Bearer <publisher_token>
+
+Response: 200 OK
+{ ...signal with status = "published"... }
+
+403 — the person who approved the finding may not publish it
+409 — the cited evidence was withdrawn since approval
+```
+
+#### Withdraw a published correction
+```
+POST /integrity/{signal_id}/withdraw
+Authorization: Bearer <publisher_token>
+{ "reason": "The milestone records were misread." }
+
+Response: 200 OK
+```
+
+It leaves the public portal at once. A correction that turns out to be wrong is
+the worst thing on the platform to leave standing.
+
+#### Other operations
+
+- `GET /integrity/` — list, filtered by status, priority or organisation.
+- `GET /integrity/{signal_id}` — one signal.
+- `PUT /integrity/{signal_id}` — revise. Rewording the claim raises the version
+  and clears the finding; re-prioritising does not.
+- `POST /integrity/{signal_id}/close` — no further work. Refused once
+  published; withdraw instead.
+- `GET /integrity/{signal_id}/approvals` — the approval trail.
+
 ### Search (`/search`)
 
 #### Global Search
@@ -686,9 +797,15 @@ Response: 200 OK
   "stories": [],
   "questions": [],
   "projects": [],
+  "scenarios": [],
+  "integrity_signals": [],
+  "unsearchable_types": ["documents", "stakeholders", "field_missions", "intelligence", "media", "tasks"],
   "total": 5
 }
 ```
+
+`unsearchable_types` names the spec section 35 content types that have no
+entity yet, so an incomplete result is visible rather than implied.
 
 ## Status Codes
 

@@ -1,7 +1,12 @@
 import Link from 'next/link'
 
-import { VerificationBadge } from '@/components/VerificationBadge'
-import type { PublicEvidence, PublicQuestion, PublicStory } from '@/lib/api'
+import { FindingBadge, VerificationBadge } from '@/components/VerificationBadge'
+import type {
+  PublicCorrection,
+  PublicEvidence,
+  PublicQuestion,
+  PublicStory,
+} from '@/lib/api'
 import { excerpt, formatCount, formatDate, isoDate } from '@/lib/format'
 
 const CARD =
@@ -123,6 +128,69 @@ export function EvidenceCard({ record }: { record: PublicEvidence }) {
           <span className={META}>{beneficiaries} people reached</span>
         ) : null}
       </div>
+    </article>
+  )
+}
+
+/**
+ * A published finding about a claim that was circulating.
+ *
+ * The claim is shown as reported speech and the finding sits beside it, so a
+ * reader skimming the card cannot come away having read the false claim as the
+ * body's own statement. Repeating a claim in order to correct it is the whole
+ * difficulty of this page; putting the verdict next to it is the least a
+ * summary card can do about that.
+ */
+export function CorrectionCard({ correction }: { correction: PublicCorrection }) {
+  const published = formatDate(correction.published_at)
+
+  return (
+    <article className={CARD}>
+      <Meta>
+        {correction.organisation ? (
+          <span>Assessed by {correction.organisation.name}</span>
+        ) : null}
+        {correction.organisation && published ? <Dot /> : null}
+        {published ? (
+          <time dateTime={isoDate(correction.published_at)}>{published}</time>
+        ) : null}
+        {correction.source ? (
+          <>
+            <Dot />
+            <span>Seen on {correction.source}</span>
+          </>
+        ) : null}
+      </Meta>
+
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h3 className="flex-1 text-base font-semibold leading-snug text-slate-900 dark:text-slate-50">
+          <Link href={`/corrections/${correction.id}`} className={TITLE_LINK}>
+            <span className="text-sm font-normal text-slate-600 dark:text-slate-400">
+              Claim:{' '}
+            </span>
+            “{excerpt(correction.claim, 160)}”
+          </Link>
+        </h3>
+        <FindingBadge finding={correction.finding} />
+      </div>
+
+      {correction.response ? (
+        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+          {excerpt(correction.response, 260)}
+        </p>
+      ) : null}
+
+      {correction.evidence_reference ? (
+        <p className={`mt-auto pt-2 ${META}`}>
+          Assessed against{' '}
+          <Link
+            href={`/evidence/${correction.evidence_reference}`}
+            className="font-mono underline underline-offset-2 hover:text-slate-900 dark:hover:text-slate-100"
+          >
+            {correction.evidence_reference}
+          </Link>
+        </p>
+      ) : null}
     </article>
   )
 }

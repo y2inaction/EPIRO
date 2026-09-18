@@ -10,6 +10,7 @@ from app.models import ApprovalDecision, ApprovalRecord, User
 EVIDENCE = "evidence"
 STORY = "story"
 QUESTION = "question"
+INTEGRITY_SIGNAL = "integrity_signal"
 
 
 def record_decision(

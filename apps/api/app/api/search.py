@@ -9,7 +9,12 @@ from sqlalchemy.orm import Session
 
 from app.authorization import AccessControl, get_access
 from app.database import get_db
-from app.schemas.core import EvidenceResponse, QuestionResponse, StoryResponse
+from app.schemas.core import (
+    EvidenceResponse,
+    IntegritySignalResponse,
+    QuestionResponse,
+    StoryResponse,
+)
 from app.services import search as search_service
 
 router = APIRouter()
@@ -22,6 +27,7 @@ RESULT_KEYS = {
     search_service.QUESTION: "questions",
     search_service.PROJECT: "projects",
     search_service.SCENARIO: "scenarios",
+    search_service.INTEGRITY_SIGNAL: "integrity_signals",
 }
 
 
@@ -52,6 +58,7 @@ SERIALISERS: Dict[str, Callable[[Any], Any]] = {
     search_service.QUESTION: QuestionResponse.model_validate,
     search_service.PROJECT: _project_summary,
     search_service.SCENARIO: _scenario_summary,
+    search_service.INTEGRITY_SIGNAL: IntegritySignalResponse.model_validate,
 }
 
 
@@ -59,7 +66,8 @@ SERIALISERS: Dict[str, Callable[[Any], Any]] = {
 async def global_search(
     q: str = Query(..., min_length=1, max_length=200),
     content_type: Optional[str] = Query(
-        None, description="evidence, story, question, project or scenario"
+        None,
+        description="evidence, story, question, project, scenario or integrity_signal",
     ),
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),

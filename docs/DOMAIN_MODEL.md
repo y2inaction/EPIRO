@@ -92,8 +92,6 @@ prose, because they are queried and reported on.
 
 Honesty about the schema, per spec section 81:
 
-- **`integrity_signal`** — has a model and response schemas but **no
-  endpoints**. Nothing reads or writes it.
 - **`scenario`** — has a model and is searchable, but there is no readiness
   workflow behind it.
 - **`location`** — a PostGIS point, linked to projects and evidence, but no

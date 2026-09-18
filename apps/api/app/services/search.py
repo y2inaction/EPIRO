@@ -5,10 +5,10 @@ stories, questions, stakeholders, field missions, intelligence, media,
 scenarios and tasks, filtered by date, geography, theme, source, status,
 organisation, verification and owner.
 
-CONFIRMED here: evidence, projects, stories, questions and scenarios, with all
-eight filters. The remaining content types are not searchable because the
-entities do not exist yet — see ``UNBUILT_TYPES``. They are listed rather than
-silently omitted so the gap is visible from the code.
+CONFIRMED here: evidence, projects, stories, questions, scenarios and integrity
+signals, with all eight filters. The remaining content types are not searchable
+because the entities do not exist yet — see ``UNBUILT_TYPES``. They are listed
+rather than silently omitted so the gap is visible from the code.
 
 Matching is Postgres full text against a stored, generated tsvector with a GIN
 index, ranked by ts_rank_cd. The previous implementation used
@@ -28,6 +28,7 @@ from sqlalchemy.orm import InstrumentedAttribute, Session
 from app.models import (
     SEARCH_CONFIG,
     Evidence,
+    IntegritySignal,
     Project,
     Question,
     Scenario,
@@ -45,6 +46,7 @@ PROJECT = "project"
 STORY = "story"
 QUESTION = "question"
 SCENARIO = "scenario"
+INTEGRITY_SIGNAL = "integrity_signal"
 
 # Input that is nothing but words and digits is treated as type-ahead: the
 # last word matches as a prefix, so "hous" finds "housing". Anything else is
@@ -129,6 +131,21 @@ SEARCHABLES: Dict[str, Searchable] = {
         status_column=Scenario.status,
         verification_column=None,
         owner_column=Scenario.owner,
+    ),
+    INTEGRITY_SIGNAL: Searchable(
+        name=INTEGRITY_SIGNAL,
+        model=IntegritySignal,
+        date_column=IntegritySignal.first_observed,
+        geography_column=IntegritySignal.geography_id,
+        thematic_column=IntegritySignal.thematic_area_id,
+        # A claim's channel is described in prose, not chosen from the source
+        # registry, which holds sources evidence rests on. Left as None so a
+        # source-filtered search excludes signals rather than returning rows
+        # the filter never applied to.
+        source_column=None,
+        status_column=IntegritySignal.status,
+        verification_column=None,
+        owner_column=IntegritySignal.assigned_to,
     ),
 }
 
@@ -302,6 +319,7 @@ def requested_types(content_type: Optional[str]) -> List[str]:
 
 __all__ = [
     "EVIDENCE",
+    "INTEGRITY_SIGNAL",
     "PROJECT",
     "QUESTION",
     "SCENARIO",

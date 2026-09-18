@@ -4,7 +4,7 @@ Spec section 36 requires that an approval be **recorded**, storing reviewer,
 timestamp, decision, comments and version, and that workflows be
 **configurable**.
 
-Both are now CONFIRMED, with one limit stated plainly in section 6: an
+Both are now CONFIRMED, with one limit stated plainly in section 7: an
 organisation configures the **review stages**, not the lifecycle around them.
 
 ---
@@ -13,8 +13,8 @@ organisation configures the **review stages**, not the lifecycle around them.
 
 One table, `approval_record`, serves every content type. It is addressed by
 `(entity_type, entity_id)` rather than by a foreign key per kind, so evidence,
-stories and questions share one trail instead of each growing its own set of
-approval columns.
+stories, questions and integrity findings share one trail instead of each
+growing its own set of approval columns.
 
 | Column | Purpose |
 |---|---|
@@ -104,7 +104,31 @@ record does not yet belong to. It has to be: a publicly submitted question
 belongs to nobody until someone claims it, so there is no tenant to check
 against. Without this step every public question was permanently stuck.
 
-## 5. The one fact base rule
+## 5. Integrity findings
+
+```
+new ──assess──▶ assessed ──approve──▶ approved ──publish──▶ published
+  ▲                 │           │                               │
+  │ (reword)     reject      reject                         withdraw
+  └───────────── assessing ◀─────┘                               ▼
+                                                             withdrawn
+```
+
+| Step | Role | Rules |
+|---|---|---|
+| Assess | `INTEGRITY_ASSESSORS` | Finding and reasoning are written together. |
+| Approve | `APPROVERS` | Must cite approved evidence (see section 6). **The assessor may not approve.** |
+| Reject | `APPROVERS` | Reason required. Clears the approval. |
+| Publish | `PUBLISHERS` | Evidence re-checked. **The approver may not publish.** |
+| Withdraw | `PUBLISHERS` | Reason required. Leaves the portal at once. |
+
+Rewording the claim raises the version and clears the finding, because the
+finding answered the old wording. Re-prioritising does not.
+
+Full detail, including what the feature deliberately cannot do, is in
+[INFORMATION_INTEGRITY.md](INFORMATION_INTEGRITY.md).
+
+## 6. The one fact base rule
 
 Nothing goes public that is not traceable to approved evidence.
 
@@ -112,8 +136,13 @@ Nothing goes public that is not traceable to approved evidence.
 - A story cannot be published if its evidence was withdrawn in the meantime.
 - A published story carries the permanent reference of its evidence, so a
   reader can follow the claim back to the record it rests on.
+- An integrity finding cannot be approved unless it cites approved evidence.
+  The single exception is a finding of `unresolved`, which asserts nothing
+  about the claim and so has nothing to source — without it the only
+  approvable outcome would be a verdict, which is how unverified verdicts get
+  recorded.
 
-## 6. Configurable review stages
+## 7. Configurable review stages
 
 An organisation defines the sequence of review stages its content must clear
 before it counts as approved, through `/api/v1/workflows`. Spec section 36's

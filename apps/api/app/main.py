@@ -13,6 +13,7 @@ from app.api import (
     evidence,
     geography,
     health,
+    integrity,
     organisations,
     programmes,
     projects,
@@ -113,6 +114,11 @@ app.include_router(sources.router, prefix="/api/v1/sources", tags=["Sources"])
 app.include_router(evidence.router, prefix="/api/v1/evidence", tags=["Evidence"])
 app.include_router(stories.router, prefix="/api/v1/stories", tags=["Stories"])
 app.include_router(questions.router, prefix="/api/v1/questions", tags=["Questions"])
+app.include_router(
+    integrity.router,
+    prefix="/api/v1/integrity",
+    tags=["Information integrity"],
+)
 app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])
 app.include_router(workflows.router, prefix="/api/v1/workflows", tags=["Workflows"])
 # No authentication: this is the portal the published information is for.

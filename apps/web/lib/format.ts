@@ -113,3 +113,58 @@ export function verificationLabel(status: string): VerificationLabel {
     }
   )
 }
+
+/**
+ * How a finding about a circulating claim should be described.
+ *
+ * Every phrase is about the claim, never about whoever repeated it. Spec
+ * section 4 forbids profiling citizens, and wording is where that leaks first:
+ * "spread by" or "targeted at" would be the same prohibition broken in prose
+ * rather than in a column.
+ *
+ * "Unresolved" is deliberately not a soft "probably false". It says the body
+ * looked and could not settle it, which is the honest state and the one spec
+ * section 32 exists to keep available.
+ */
+const FINDINGS: Record<string, VerificationLabel> = {
+  accurate: {
+    label: 'Accurate',
+    meaning: 'Checked against evidence, and the claim holds up.',
+    tone: 'checked',
+  },
+  misleading: {
+    label: 'Misleading',
+    meaning: 'Partly true, but framed so that it gives a false impression.',
+    tone: 'disputed',
+  },
+  out_of_context: {
+    label: 'Out of context',
+    meaning: 'Real material, presented as being about something it is not.',
+    tone: 'disputed',
+  },
+  false: {
+    label: 'False',
+    meaning: 'Checked against evidence, and the claim does not hold up.',
+    tone: 'disputed',
+  },
+  unsubstantiated: {
+    label: 'Unsubstantiated',
+    meaning: 'Nothing found that supports it. That is not the same as disproved.',
+    tone: 'pending',
+  },
+  unresolved: {
+    label: 'Unresolved',
+    meaning: 'Looked into, and it could not be settled either way.',
+    tone: 'pending',
+  },
+}
+
+export function findingLabel(finding: string): VerificationLabel {
+  return (
+    FINDINGS[finding] ?? {
+      label: finding.replace(/_/g, ' '),
+      meaning: 'What the assessment concluded about this claim.',
+      tone: 'pending',
+    }
+  )
+}

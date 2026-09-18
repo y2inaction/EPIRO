@@ -4,6 +4,7 @@ const NAV = [
   { href: '/stories', label: 'Stories' },
   { href: '/evidence', label: 'Evidence' },
   { href: '/questions', label: 'Questions' },
+  { href: '/corrections', label: 'Corrections' },
   { href: '/search', label: 'Search' },
 ] as const
 
@@ -140,7 +141,7 @@ export function CardGrid({ children }: { children: React.ReactNode }) {
  * the check entirely, and a paginated route that does not exist would only
  * show up as a 404 in someone's browser.
  */
-export type PaginatedRoute = '/stories' | '/evidence' | '/questions'
+export type PaginatedRoute = '/stories' | '/evidence' | '/questions' | '/corrections'
 
 export function Pagination({
   page,

@@ -42,6 +42,19 @@ CONTENT_AUTHORS = frozenset({Role.CONTENT_MANAGER, Role.EDITOR, Role.TRANSLATOR}
 QUESTION_RESPONDERS = frozenset(
     {Role.RESEARCHER, Role.CONTENT_MANAGER, Role.EDITOR, Role.EVIDENCE_MANAGER}
 )
+# Spec sections 25-26. Logging that something is circulating is observation,
+# so it is open to the people who are out where things circulate. Deciding
+# what is true about it is not, and is kept to a narrower set.
+INTEGRITY_MONITORS = frozenset(
+    {
+        Role.INTEGRITY_ANALYST,
+        Role.ANALYST,
+        Role.RESEARCHER,
+        Role.FIELD_OFFICER,
+        Role.EVIDENCE_MANAGER,
+    }
+)
+INTEGRITY_ASSESSORS = frozenset({Role.INTEGRITY_ANALYST, Role.VERIFIER, Role.EVIDENCE_MANAGER})
 
 
 class AccessControl:

@@ -88,6 +88,38 @@ class PublicQuestion(BaseModel):
     organisation: Optional[PublicOrganisation] = None
 
 
+class PublicCorrection(BaseModel):
+    """A published finding about a claim that was circulating.
+
+    Carries the reasoning as well as the verdict. Telling the public that
+    something they have heard is false, without saying how that was
+    established, is the unexplainable intelligence spec section 4 rules out —
+    so ``assessment`` is part of the published record, not an internal note.
+
+    Nothing here identifies anybody. Not the assessor, not the approver, and
+    above all not whoever was repeating the claim: the platform publishes what
+    was found out about information, never about the people carrying it.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    claim: str
+    finding: str
+    assessment: Optional[str] = None
+    response: Optional[str] = None
+    # The channel, as recorded. A description of where something was
+    # circulating, never an account or a person.
+    source: Optional[str] = None
+    first_observed: Optional[date] = None
+    published_at: Optional[datetime] = None
+    language: str
+    # The evidence the finding rests on, so a reader can check the correction
+    # the same way they can check a story.
+    evidence_reference: Optional[str] = None
+    organisation: Optional[PublicOrganisation] = None
+
+
 class PublicPage(BaseModel):
     """A page of public results."""
 

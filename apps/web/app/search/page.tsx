@@ -1,12 +1,12 @@
 import type { Metadata } from 'next'
 
-import { EvidenceCard, QuestionCard, StoryCard } from '@/components/Cards'
+import { CorrectionCard, EvidenceCard, QuestionCard, StoryCard } from '@/components/Cards'
 import { CardGrid, Notice, PageHeading } from '@/components/Shell'
 import { search } from '@/lib/api'
 
 export const metadata: Metadata = {
   title: 'Search',
-  description: 'Search published stories, evidence records and answers.',
+  description: 'Search published stories, evidence records, answers and corrections.',
 }
 
 function SearchForm({ term }: { term: string }) {
@@ -91,7 +91,7 @@ export default async function SearchPage({
       <>
         <PageHeading
           title="Search"
-          description="Search everything that has been published: stories, evidence records and answers to public questions."
+          description="Search everything that has been published: stories, evidence records, answers to public questions and corrections."
         />
         <SearchForm term="" />
         <Notice
@@ -142,6 +142,14 @@ export default async function SearchPage({
             <div className="space-y-4">
               {result.value.questions.map((question) => (
                 <QuestionCard key={question.id} question={question} />
+              ))}
+            </div>
+          </Group>
+
+          <Group heading="Corrections" count={result.value.corrections.length}>
+            <div className="space-y-4">
+              {result.value.corrections.map((correction) => (
+                <CorrectionCard key={correction.id} correction={correction} />
               ))}
             </div>
           </Group>
