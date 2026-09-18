@@ -617,11 +617,19 @@ class QuestionUpdate(BaseModel):
 
 
 class QuestionResponse(QuestionBase):
-    """Question response schema."""
+    """Question response schema.
+
+    Carries organisation_id because roles are held per organisation: a client
+    cannot tell which actions to offer on a question without knowing which body
+    it was triaged to. It is not a disclosure — a caller only ever sees
+    questions in organisations they already belong to, or ones nobody has
+    claimed at all.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    organisation_id: Optional[uuid.UUID] = None
     status: QuestionStatus
     response: Optional[str] = None
     response_date: Optional[datetime] = None

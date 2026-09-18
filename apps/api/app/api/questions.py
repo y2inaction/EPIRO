@@ -47,9 +47,30 @@ RESPONDABLE = frozenset(
 
 
 def _get_scoped_question(db: Session, question_id: uuid.UUID, access: AccessControl) -> Question:
-    """Load a question the caller is entitled to see."""
+    """Load a question the caller is entitled to see.
+
+    An untriaged question belongs to no organisation, so ordinary tenant
+    scoping would hide it from everyone — including the people the inbox
+    offers it to. Anyone who could claim one may read one: otherwise a
+    question could be listed in the queue and not opened, which is exactly
+    the dead end triage exists to remove.
+    """
     question = BaseRepository(db, Question).get_by_id(question_id)
-    if not question or not access.can_access(question.organisation_id):
+    if question is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question not found",
+        )
+
+    if question.organisation_id is None:
+        if access.is_platform_admin or access.holds_role_anywhere(QUESTION_RESPONDERS):
+            return question
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question not found",
+        )
+
+    if not access.can_access(question.organisation_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Question not found",

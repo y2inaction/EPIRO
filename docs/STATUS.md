@@ -21,7 +21,7 @@ contradicts this file, this file is right and the other one is stale.
 
 - 19 database tables, one Alembic history, no schema drift (`alembic check`).
 - 99 API operations across 14 routers.
-- 255 backend tests at 87% line coverage, plus 62 frontend tests.
+- 259 backend tests at 87% line coverage, plus 86 frontend tests.
 - Seven CI jobs green: lint and format, type check, backend tests, frontend
   tests, Docker build, dependency audit, security scan.
 
@@ -86,18 +86,23 @@ visible rather than implied by absence.
 
 **PARTIAL.**
 
-**CONFIRMED:** the public portal (seven routes) and the evidence workspace —
-sign-in, the records of each organisation the caller belongs to, and a record
-page offering exactly the workflow actions that person's role and that
-record's state allow. Verified against a running stack by taking one record
-from draft to published to withdrawn as three different people.
+**CONFIRMED:** the public portal (seven routes) and the staff workspace —
+sign-in, plus evidence, story and question screens. Each record page offers
+exactly the workflow actions that person's role and that record's state allow,
+and says what the record is waiting for when they can do nothing.
+
+Verified against a running stack by driving all three workflows end to end as
+four different people, including every separation of duties: a verifier
+refused when approving their own verification, a responder refused when
+approving their own answer, and an approver refused when publishing what they
+approved.
 
 The session token is held in an httpOnly cookie, so page script cannot read
 it and every authenticated call happens on the server.
 
-**NOT BUILT:** any editorial screen for stories, the question triage queue,
-project and programme management, user administration, and any dashboard.
-Those capabilities are CONFIRMED above but reachable only through the API.
+**NOT BUILT:** creating evidence or drafting a story in the interface (both
+exist in the API), project and programme management, user administration, and
+any dashboard.
 
 ---
 

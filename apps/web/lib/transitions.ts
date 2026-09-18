@@ -119,3 +119,216 @@ export function waitingFor(evidence: Evidence): string | null {
   }
   return 'Approved. Waiting on a publisher.'
 }
+
+// --- Stories ---------------------------------------------------------------
+
+/** Editorial sign-off, kept separate from publishing so two people are needed. */
+export const STORY_APPROVERS = ['approver', 'executive', 'editor']
+export const CONTENT_AUTHORS = ['content_manager', 'editor', 'translator']
+
+export type StoryActionName =
+  | 'submit'
+  | 'approve'
+  | 'reject'
+  | 'publish'
+  | 'withdraw'
+
+export interface StoryAction {
+  name: StoryActionName
+  label: string
+  hint: string
+  requiresReason: boolean
+  destructive?: boolean
+}
+
+export interface StoryLike {
+  status: string
+}
+
+export function storyActions(story: StoryLike, role: string | undefined): StoryAction[] {
+  const actions: StoryAction[] = []
+
+  if (
+    (story.status === 'draft' || story.status === 'rejected') &&
+    holds(role, CONTENT_AUTHORS)
+  ) {
+    actions.push({
+      name: 'submit',
+      label: 'Submit for review',
+      hint: 'Put this in front of a reviewer.',
+      requiresReason: false,
+    })
+  }
+
+  if (story.status === 'in_review' && holds(role, STORY_APPROVERS)) {
+    actions.push({
+      name: 'approve',
+      label: 'Approve',
+      hint: 'Sign this off. Someone else publishes it, and you cannot be its author.',
+      requiresReason: false,
+    })
+  }
+
+  if (
+    (story.status === 'in_review' || story.status === 'approved') &&
+    holds(role, STORY_APPROVERS)
+  ) {
+    actions.push({
+      name: 'reject',
+      label: 'Send back',
+      hint: 'Return this with a reason. Any existing approval is cleared.',
+      requiresReason: true,
+      destructive: true,
+    })
+  }
+
+  if (story.status === 'approved' && holds(role, PUBLISHERS)) {
+    actions.push({
+      name: 'publish',
+      label: 'Publish',
+      hint: 'Release this publicly. You cannot be the person who approved it.',
+      requiresReason: false,
+    })
+  }
+
+  if (story.status === 'published' && holds(role, PUBLISHERS)) {
+    actions.push({
+      name: 'withdraw',
+      label: 'Withdraw',
+      hint: 'Retract this, with a stated reason. It also leaves the featured set.',
+      requiresReason: true,
+      destructive: true,
+    })
+  }
+
+  return actions
+}
+
+export function storyWaitingFor(story: StoryLike): string {
+  switch (story.status) {
+    case 'draft':
+      return 'A draft. The author submits it when it is ready.'
+    case 'in_review':
+      return 'Waiting on a reviewer, who cannot be its author.'
+    case 'approved':
+      return 'Approved. Waiting on a publisher, who cannot be the approver.'
+    case 'rejected':
+      return 'Sent back. The author revises it and submits it again.'
+    case 'published':
+      return 'Published.'
+    case 'archived':
+      return 'Withdrawn from the public portal.'
+    default:
+      return 'In the editorial workflow.'
+  }
+}
+
+// --- Questions -------------------------------------------------------------
+
+export const QUESTION_RESPONDERS = [
+  'researcher',
+  'content_manager',
+  'editor',
+  'evidence_manager',
+]
+
+export type QuestionActionName =
+  | 'triage'
+  | 'respond'
+  | 'approve'
+  | 'reject'
+  | 'publish'
+
+export interface QuestionAction {
+  name: QuestionActionName
+  label: string
+  hint: string
+  requiresReason: boolean
+  destructive?: boolean
+}
+
+export interface QuestionLike {
+  status: string
+  response: string | null
+}
+
+/** States in which an answer can still be drafted or rewritten. */
+const RESPONDABLE = ['triaged', 'researching', 'verified', 'response_drafted']
+
+export function questionActions(
+  question: QuestionLike,
+  role: string | undefined,
+): QuestionAction[] {
+  const actions: QuestionAction[] = []
+
+  if (question.status === 'new' && holds(role, QUESTION_RESPONDERS)) {
+    actions.push({
+      name: 'triage',
+      label: 'Claim this question',
+      hint: 'Assign it to your organisation so it can be answered.',
+      requiresReason: false,
+    })
+  }
+
+  if (RESPONDABLE.includes(question.status) && holds(role, QUESTION_RESPONDERS)) {
+    actions.push({
+      name: 'respond',
+      label: question.response ? 'Rewrite the answer' : 'Draft an answer',
+      hint: 'Write the answer that will be published if it is approved.',
+      requiresReason: true,
+    })
+  }
+
+  if (question.status === 'response_drafted' && holds(role, APPROVERS)) {
+    actions.push({
+      name: 'approve',
+      label: 'Approve the answer',
+      hint: 'You cannot approve an answer you drafted yourself.',
+      requiresReason: false,
+    })
+  }
+
+  if (
+    (question.status === 'response_drafted' || question.status === 'approved') &&
+    holds(role, APPROVERS)
+  ) {
+    actions.push({
+      name: 'reject',
+      label: 'Send back',
+      hint: 'Return this for more research, with a reason.',
+      requiresReason: true,
+      destructive: true,
+    })
+  }
+
+  if (question.status === 'approved' && holds(role, PUBLISHERS)) {
+    actions.push({
+      name: 'publish',
+      label: 'Publish the answer',
+      hint: 'Put the question and its answer on the public portal.',
+      requiresReason: false,
+    })
+  }
+
+  return actions
+}
+
+export function questionWaitingFor(question: QuestionLike): string {
+  switch (question.status) {
+    case 'new':
+      return 'Nobody has claimed this yet.'
+    case 'triaged':
+    case 'researching':
+      return 'Claimed. Waiting for someone to draft an answer.'
+    case 'response_drafted':
+      return 'An answer is drafted. Waiting on an approver, who cannot have drafted it.'
+    case 'approved':
+      return 'Approved. Waiting on a publisher, who cannot be the approver.'
+    case 'published':
+      return 'Published on the public portal.'
+    case 'closed':
+      return 'Closed. No further answer will be given.'
+    default:
+      return 'In the question workflow.'
+  }
+}

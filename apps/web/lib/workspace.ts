@@ -171,3 +171,148 @@ export function withdrawEvidence(id: string, reason: string): Promise<Result<Evi
     body: JSON.stringify({ reason }),
   })
 }
+
+// --- Stories ---------------------------------------------------------------
+
+export interface Story {
+  id: string
+  title: string
+  headline: string | null
+  summary: string | null
+  body: string
+  language: string
+  organisation_id: string
+  evidence_id: string
+  status: string
+  featured: boolean
+  published_date: string | null
+  version: number
+  created_at: string
+  updated_at: string
+}
+
+export function listStories(language = 'en'): Promise<Result<Page<Story>>> {
+  return request<Page<Story>>(`/stories/?language=${encodeURIComponent(language)}&limit=50`)
+}
+
+export function getStory(id: string): Promise<Result<Story>> {
+  return request<Story>(`/stories/${encodeURIComponent(id)}`)
+}
+
+export function listStoryApprovals(id: string): Promise<Result<ApprovalRecord[]>> {
+  return request<ApprovalRecord[]>(`/stories/${encodeURIComponent(id)}/approvals`)
+}
+
+export function submitStory(id: string): Promise<Result<Story>> {
+  return request<Story>(`/stories/${encodeURIComponent(id)}/submit`, { method: 'POST' })
+}
+
+export function approveStory(id: string, comments?: string): Promise<Result<Story>> {
+  return request<Story>(`/stories/${encodeURIComponent(id)}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ comments: comments ?? null }),
+  })
+}
+
+export function rejectStory(
+  id: string,
+  comments: string,
+  changesRequested: boolean,
+): Promise<Result<Story>> {
+  return request<Story>(`/stories/${encodeURIComponent(id)}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ comments, changes_requested: changesRequested }),
+  })
+}
+
+export function publishStory(id: string): Promise<Result<Story>> {
+  return request<Story>(`/stories/${encodeURIComponent(id)}/publish`, { method: 'POST' })
+}
+
+export function withdrawStory(id: string, reason: string): Promise<Result<Story>> {
+  return request<Story>(`/stories/${encodeURIComponent(id)}/withdraw`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  })
+}
+
+// --- Questions -------------------------------------------------------------
+
+export interface Question {
+  id: string
+  organisation_id: string | null
+  category: string | null
+  question_text: string
+  location_state: string | null
+  location_lga: string | null
+  language: string
+  is_anonymous: boolean
+  status: string
+  response: string | null
+  response_date: string | null
+  is_published: boolean
+  created_at: string
+  updated_at: string
+}
+
+/** The public inbox: questions nobody has claimed yet. */
+export function listUntriagedQuestions(): Promise<Result<Page<Question>>> {
+  return request<Page<Question>>('/questions/?untriaged=true&limit=50')
+}
+
+export function listQuestions(organisationId: string): Promise<Result<Page<Question>>> {
+  return request<Page<Question>>(
+    `/questions/?organisation_id=${encodeURIComponent(organisationId)}&limit=50`,
+  )
+}
+
+export function getQuestion(id: string): Promise<Result<Question>> {
+  return request<Question>(`/questions/${encodeURIComponent(id)}`)
+}
+
+export function listQuestionApprovals(id: string): Promise<Result<ApprovalRecord[]>> {
+  return request<ApprovalRecord[]>(`/questions/${encodeURIComponent(id)}/approvals`)
+}
+
+export function triageQuestion(
+  id: string,
+  organisationId: string,
+  category?: string,
+): Promise<Result<Question>> {
+  return request<Question>(`/questions/${encodeURIComponent(id)}/triage`, {
+    method: 'POST',
+    body: JSON.stringify({
+      organisation_id: organisationId,
+      category: category || null,
+    }),
+  })
+}
+
+export function respondToQuestion(id: string, response: string): Promise<Result<Question>> {
+  return request<Question>(`/questions/${encodeURIComponent(id)}/respond`, {
+    method: 'POST',
+    body: JSON.stringify({ response }),
+  })
+}
+
+export function approveQuestion(id: string, comments?: string): Promise<Result<Question>> {
+  return request<Question>(`/questions/${encodeURIComponent(id)}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ comments: comments ?? null }),
+  })
+}
+
+export function rejectQuestion(
+  id: string,
+  comments: string,
+  changesRequested: boolean,
+): Promise<Result<Question>> {
+  return request<Question>(`/questions/${encodeURIComponent(id)}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ comments, changes_requested: changesRequested }),
+  })
+}
+
+export function publishQuestion(id: string): Promise<Result<Question>> {
+  return request<Question>(`/questions/${encodeURIComponent(id)}/publish`, { method: 'POST' })
+}

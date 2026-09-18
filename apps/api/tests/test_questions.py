@@ -240,10 +240,11 @@ class TestResponse:
     def test_an_untriaged_question_cannot_be_answered(
         self, client: TestClient, db: Session, organisation: Organisation
     ):
-        """It belongs to no organisation yet, so it is not the caller's to answer.
+        """It belongs to no organisation yet, so there is nobody answering for it.
 
-        Reported as missing rather than refused, the same way any record
-        outside the caller's tenants is: the route in is triage.
+        Refused rather than reported missing: someone who could triage it is
+        allowed to read it, so the useful answer names the step they have
+        skipped rather than pretending the question does not exist.
         """
         question = make_question(db)
         responder = member(db, organisation, Role.RESEARCHER)
@@ -254,7 +255,8 @@ class TestResponse:
             headers=auth_header(responder),
         )
 
-        assert response.status_code == 404
+        assert response.status_code == 409
+        assert "triaged" in response.json()["detail"]
         assert reload(db, question).response is None
 
     def test_an_empty_response_is_refused(
@@ -481,3 +483,51 @@ class TestTenancy:
         response = client.get(f"/api/v1/questions/{question.id}", headers=auth_header(outsider))
 
         assert response.status_code == 404
+
+
+class TestUnclaimedQuestionIsReadable:
+    """The inbox must not list a question that cannot then be opened."""
+
+    def test_someone_who_could_triage_can_open_an_unclaimed_question(
+        self, client: TestClient, db: Session, organisation: Organisation
+    ):
+        question = make_question(db)
+        responder = member(db, organisation, Role.RESEARCHER)
+
+        response = client.get(f"/api/v1/questions/{question.id}", headers=auth_header(responder))
+
+        assert response.status_code == 200
+        assert response.json()["organisation_id"] is None
+
+    def test_someone_who_could_not_triage_cannot(
+        self, client: TestClient, db: Session, organisation: Organisation
+    ):
+        question = make_question(db)
+        analyst = member(db, organisation, Role.ANALYST)
+
+        response = client.get(f"/api/v1/questions/{question.id}", headers=auth_header(analyst))
+
+        assert response.status_code == 404
+
+    def test_a_claimed_question_is_still_scoped_to_its_tenant(
+        self, client: TestClient, db: Session, organisation: Organisation
+    ):
+        """Widening the unclaimed case must not widen the claimed one."""
+        other = make_organisation(db)
+        question = make_question(db, other, status=Q.TRIAGED)
+        responder = member(db, organisation, Role.RESEARCHER)
+
+        response = client.get(f"/api/v1/questions/{question.id}", headers=auth_header(responder))
+
+        assert response.status_code == 404
+
+    def test_the_response_carries_the_organisation_that_claimed_it(
+        self, client: TestClient, db: Session, organisation: Organisation
+    ):
+        """A client needs it to know which role decides what it may offer."""
+        question = make_question(db, organisation, status=Q.TRIAGED)
+        responder = member(db, organisation, Role.RESEARCHER)
+
+        body = client.get(f"/api/v1/questions/{question.id}", headers=auth_header(responder)).json()
+
+        assert body["organisation_id"] == str(organisation.id)

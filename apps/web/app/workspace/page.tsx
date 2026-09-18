@@ -155,6 +155,21 @@ export default async function WorkspacePage({
         </nav>
       ) : null}
 
+      <nav aria-label="Workspace" className="mb-8 flex flex-wrap gap-2">
+        <Link
+          href="/workspace/stories"
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          Stories
+        </Link>
+        <Link
+          href="/workspace/questions"
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          Questions
+        </Link>
+      </nav>
+
       <h2 className="mb-4 text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
         Evidence
       </h2>
