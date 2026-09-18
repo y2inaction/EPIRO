@@ -1,6 +1,6 @@
 # EPIRO — Build Status
 
-**Last updated:** 2026-09-17 · **Branch:** `claude/beautiful-fermi-npx5r9`
+**Last updated:** 2026-09-18 · **Branch:** `claude/beautiful-fermi-npx5r9`
 
 This document exists because spec section 81 forbids presenting a planned
 feature as one that already works. Every claim below carries a label:
@@ -19,9 +19,9 @@ contradicts this file, this file is right and the other one is stale.
 
 ## At a glance
 
-- 19 database tables, one Alembic history, no schema drift (`alembic check`).
-- 99 API operations across 14 routers.
-- 259 backend tests at 87% line coverage, plus 86 frontend tests.
+- 21 database tables, one Alembic history, no schema drift (`alembic check`).
+- 103 API operations across 15 routers.
+- 281 backend tests at 87% line coverage, plus 86 frontend tests.
 - Seven CI jobs green: lint and format, type check, backend tests, frontend
   tests, Docker build, dependency audit, security scan.
 
@@ -51,7 +51,7 @@ contradicts this file, this file is right and the other one is stale.
 | 15 | Citizen questions | **CONFIRMED** | Public submission, triage, research, response, approval, publication, closure. |
 | 16 | Multilingual | **PARTIAL** | Content carries a language code and can be filtered by it. Translations of the same story are **not linked to each other**, and there is no translation workflow. |
 | 35 | Global search | **PARTIAL** | Full-text with ranking and all eight filters across evidence, projects, stories, questions and scenarios. The other content types section 35 names — documents, stakeholders, field missions, intelligence, media, tasks — have no entity yet, and the API says so in its `unsearchable_types` field. |
-| 36 | Approval engine | **PARTIAL** | Approvals are recorded with reviewer, timestamp, decision, comments and the version reviewed, across evidence, stories and questions. The workflows themselves are **fixed in code, not configurable**: an organisation cannot define its own stages. |
+| 36 | Approval engine | **PARTIAL** | Approvals are recorded with reviewer, timestamp, decision, comments and the version reviewed, across evidence, stories and questions. An organisation defines its own **review stages** for evidence, and each cleared stage is named on the trail. Two limits: the coarse lifecycle is deliberately fixed so an organisation cannot redefine what "published" means to the public, and staged review is wired into **evidence only** — stories and questions keep the single implicit stage. |
 
 ### Not started
 

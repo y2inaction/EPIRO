@@ -757,3 +757,68 @@ class PaginatedResponse(BaseModel):
     page_size: int
     total_pages: int
     data: List[Any]
+
+
+class WorkflowStageInput(BaseModel):
+    """One review stage in a workflow definition."""
+
+    name: str = Field(..., min_length=1, max_length=160)
+    required_roles: List[str] = Field(..., min_length=1)
+    requires_distinct_actor: bool = Field(
+        True,
+        description=(
+            "Whether whoever clears this stage must differ from whoever cleared "
+            "the previous one. Forced true on the final stage."
+        ),
+    )
+
+
+class WorkflowDefinitionCreate(BaseModel):
+    """A workflow an organisation defines for one kind of content.
+
+    Stages are given in the order they must be cleared. The coarse lifecycle
+    around them — draft, approved, published, withdrawn — is not configurable:
+    see app/services/workflow.py for why.
+    """
+
+    organisation_id: uuid.UUID
+    entity_type: str = Field(..., pattern="^(evidence|story|question)$")
+    name: str = Field(..., min_length=1, max_length=160)
+    description: Optional[str] = None
+    stages: List[WorkflowStageInput] = Field(..., min_length=1)
+
+
+class WorkflowStageResponse(BaseModel):
+    """A stage as stored."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    position: int
+    name: str
+    required_roles: List[str]
+    requires_distinct_actor: bool
+
+
+class WorkflowDefinitionResponse(BaseModel):
+    """A workflow definition and its stages, in order."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    entity_type: str
+    name: str
+    description: Optional[str] = None
+    is_active: bool
+    stages: List[WorkflowStageResponse] = []
+
+
+class WorkflowProgressResponse(BaseModel):
+    """How far a record has got through its organisation's workflow."""
+
+    definition_name: Optional[str] = None
+    current_stage: Optional[str] = None
+    cleared: int
+    total: int
+    is_final_stage: bool

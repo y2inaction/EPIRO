@@ -23,6 +23,7 @@ from app.api import (
     stories,
     thematic_areas,
     users,
+    workflows,
 )
 from app.config import settings
 from app.rate_limit import RateLimitExceeded, limiter, rate_limit_exceeded_handler
@@ -113,6 +114,7 @@ app.include_router(evidence.router, prefix="/api/v1/evidence", tags=["Evidence"]
 app.include_router(stories.router, prefix="/api/v1/stories", tags=["Stories"])
 app.include_router(questions.router, prefix="/api/v1/questions", tags=["Questions"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])
+app.include_router(workflows.router, prefix="/api/v1/workflows", tags=["Workflows"])
 # No authentication: this is the portal the published information is for.
 app.include_router(public.router, prefix="/api/v1/public", tags=["Public portal"])
 

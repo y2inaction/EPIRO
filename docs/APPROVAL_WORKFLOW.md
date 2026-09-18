@@ -4,9 +4,8 @@ Spec section 36 requires that an approval be **recorded**, storing reviewer,
 timestamp, decision, comments and version, and that workflows be
 **configurable**.
 
-The recording is CONFIRMED. The configurability is **NOT BUILT** — the stages
-below are fixed in code. An organisation cannot define its own. See
-`docs/STATUS.md`.
+Both are now CONFIRMED, with one limit stated plainly in section 6: an
+organisation configures the **review stages**, not the lifecycle around them.
 
 ---
 
@@ -114,20 +113,67 @@ Nothing goes public that is not traceable to approved evidence.
 - A published story carries the permanent reference of its evidence, so a
   reader can follow the claim back to the record it rests on.
 
-## 6. What configurability would require
+## 6. Configurable review stages
 
-Recorded here so the gap is actionable rather than vague. A configurable
-engine (§36) needs:
+An organisation defines the sequence of review stages its content must clear
+before it counts as approved, through `/api/v1/workflows`. Spec section 36's
+own example — Draft → Review → Fact Check → Compliance → Approval →
+Publication — is exactly that shape: every configurable step in it sits
+between submission and publication.
 
-1. A workflow definition per organisation and content type: an ordered list of
-   stages, each naming the role that may act and whether it requires an actor
-   distinct from the previous stage.
-2. A current-stage pointer on each record, replacing the fixed status enums.
-3. Migration of the three hard-coded lifecycles above into default definitions,
-   so existing behaviour is preserved.
-4. Validation that a definition cannot remove a separation of duties that the
-   platform guarantees — an organisation must not be able to configure away
-   the rule that the author cannot approve their own work.
+```
+POST /api/v1/workflows
+{
+  "organisation_id": "...",
+  "entity_type": "evidence",
+  "name": "Editorial review",
+  "stages": [
+    {"name": "Fact check",  "required_roles": ["verifier"]},
+    {"name": "Compliance",  "required_roles": ["executive"]},
+    {"name": "Approval",    "required_roles": ["approver"]}
+  ]
+}
+```
 
-Point 4 is the one that matters: configurability must not become a way to
-switch off accountability.
+Each `POST /evidence/{id}/approve` then clears one stage. The record becomes
+approved only when the last is cleared, and each cleared stage is named on the
+approval trail. A rejection sends the record back to the first stage, because
+whatever was cleared was cleared against content that has since been sent
+back. An edit does the same, by raising the version.
+
+Progress is **derived from the approval trail**, not stored on the record. A
+pointer would be a second copy of something the trail already knows, and the
+copy is what drifts.
+
+Where a stage is configured, the roles it names are the authority on who may
+clear it — choosing who reviews is the point of configuring a workflow, so the
+endpoint's own default must not override it. An organisation that has
+configured nothing keeps the default exactly.
+
+### What an organisation cannot configure
+
+This is the part that matters, and an earlier version of this document got it
+wrong. It said a current-stage pointer should *replace the fixed status
+enums*. That would have been a mistake: the public portal's "published" filter
+would then read a configurable pointer, and an organisation could change what
+"published" means to the public by editing its own configuration — the same
+accountability hole the final-stage rule below guards against, reached from
+the other side.
+
+So the coarse lifecycle — draft, approved, published, withdrawn — stays fixed
+in code. Configurability must not reach the guarantees the platform makes to
+people outside it.
+
+Refused at definition time:
+
+| Attempted | Refused because |
+|---|---|
+| A workflow with no stages | Nothing would ever be reviewed. |
+| A stage naming no role | Nothing could ever clear it. |
+| A stage naming an unknown role | It could never be satisfied. |
+| A stage naming `public_user` | Review is what the organisation is accountable for, not the public. |
+| A final stage not requiring a distinct actor | One person would be the only review before publication. |
+
+The last row is the one to keep. An organisation may add rigour; it may not
+remove it. A configuration switch that turned off the separation of duties
+would make the platform's central claim false.

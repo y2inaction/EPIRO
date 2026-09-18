@@ -1022,6 +1022,83 @@ class Scenario(TimestampedModel):
     )
 
 
+class WorkflowDefinition(TimestampedModel):
+    """An organisation's review sequence for one kind of content.
+
+    Spec section 36 asks for configurable workflows, giving the example
+    Draft → Review → Fact Check → Compliance → Approval → Publication. Every
+    configurable step in that list sits between submission and approval; draft
+    and publication are the fixed ends of it.
+
+    So what an organisation defines here is the sequence of review stages a
+    record must clear before it counts as approved. The coarse lifecycle —
+    draft, approved, published, withdrawn — stays fixed in code, deliberately:
+    if the public portal's "published" filter read a configurable pointer, an
+    organisation could change what published means to the public by editing
+    its own workflow. Configurability must not reach the guarantees the
+    platform makes to people outside it.
+    """
+
+    __tablename__ = "workflow_definition"
+
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False
+    )
+    # Which kind of content this governs: evidence, story or question. The
+    # same strings the approval trail is addressed by.
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    stages: Mapped[list["WorkflowStage"]] = relationship(
+        back_populates="definition",
+        cascade="all, delete-orphan",
+        order_by="WorkflowStage.position",
+    )
+
+    __table_args__ = (
+        # One active definition per organisation and content type. Two would
+        # make "which workflow applies" ambiguous, and the answer must never
+        # be ambiguous for an approval.
+        Index(
+            "uq_workflow_active_per_type",
+            "organisation_id",
+            "entity_type",
+            unique=True,
+            postgresql_where=text("is_active"),
+        ),
+        Index("idx_workflow_organisation_id", "organisation_id"),
+    )
+
+
+class WorkflowStage(TimestampedModel):
+    """One review step a record must clear."""
+
+    __tablename__ = "workflow_stage"
+
+    definition_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workflow_definition.id"), nullable=False
+    )
+    # Order within the definition, ascending. A record clears stages in this
+    # order and is approved once the last one is cleared.
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    # Roles that may clear this stage, stored as role values.
+    required_roles: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
+    # Whether whoever clears this stage must differ from whoever cleared the
+    # previous one. The platform forces this on the final stage regardless of
+    # what is configured; see app/services/workflow.py.
+    requires_distinct_actor: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    definition: Mapped["WorkflowDefinition"] = relationship(back_populates="stages")
+
+    __table_args__ = (
+        UniqueConstraint("definition_id", "position", name="uq_stage_position"),
+        Index("idx_stage_definition_id", "definition_id"),
+    )
+
+
 class ApprovalRecord(TimestampedModel):
     """One approval decision, kept whatever the outcome.
 
@@ -1047,6 +1124,16 @@ class ApprovalRecord(TimestampedModel):
 
     decision: Mapped[ApprovalDecision] = mapped_column(
         SQLEnum(ApprovalDecision, values_callable=_enum_values), nullable=False
+    )
+    # Which configured stage this decision cleared, when the organisation has
+    # defined a workflow. Null means the single implicit stage every
+    # organisation has before it configures anything.
+    #
+    # How far a record has got is derived from these records rather than kept
+    # as a pointer on the record itself: a pointer is a second copy of the
+    # truth, and the one that drifts is always the copy.
+    workflow_stage_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workflow_stage.id"), nullable=True
     )
     reviewer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("user.id"), nullable=False

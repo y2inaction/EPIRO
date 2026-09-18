@@ -39,6 +39,7 @@ from app.schemas.core import (
     VerificationNotes,
     WithdrawalRequest,
 )
+from app.services import workflow
 from app.services.approval import EVIDENCE, decisions_for, record_decision
 from app.services.evidence import invalidate_review
 from app.services.indicator import record_measurement
@@ -315,10 +316,17 @@ async def approve_evidence(
     access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
-    """Approve verified evidence for publication."""
+    """Clear the next review stage, approving the evidence once all are cleared.
+
+    With no configured workflow there is one implicit stage and this approves
+    the record outright, which is what every organisation gets until it defines
+    something of its own. With a workflow, each call clears one stage and the
+    record is only approved when the last one is cleared.
+    """
     evidence_repo = EvidenceRepository(db)
     evidence = _get_scoped_evidence(evidence_repo, evidence_id, access)
-    access.require_role(evidence.organisation_id, APPROVERS)
+    organisation_id = evidence.organisation_id
+    access.require_member(organisation_id)
 
     if evidence.verification_status != "verified":
         raise HTTPException(
@@ -326,18 +334,36 @@ async def approve_evidence(
             detail="Evidence must be verified before it can be approved",
         )
 
-    access.require_distinct_actor(evidence.verified_by)
-    organisation_id = evidence.organisation_id
     verified_by = evidence.verified_by
     version = evidence.version
 
-    approved = evidence_repo.mark_approved(evidence_id, access.user.id)
+    state = workflow.progress(
+        db,
+        organisation_id=organisation_id,
+        entity_type=EVIDENCE,
+        entity_id=evidence_id,
+        version=version,
+    )
 
-    # An indicator's current value is whatever the most recent approved
-    # evidence measured, so a reported figure always traces to a record.
-    moved = record_measurement(db, approved)
-    if moved is not None:
-        db.commit()
+    # A configured stage names who clears it, and that is the authority:
+    # choosing who reviews is the point of configuring a workflow, so the
+    # endpoint's own default must not override it. Without a workflow the
+    # default applies, which is what every organisation gets until it
+    # configures something.
+    if state.stage is not None:
+        workflow.require_stage_role(state.stage, access.role_in(organisation_id))
+    else:
+        access.require_role(organisation_id, APPROVERS)
+
+    # Whoever clears a stage must differ from whoever cleared the one before,
+    # and from the verifier: the point is that more than one person looked.
+    # Forced on the final stage whatever the configuration says.
+    if state.stage is None or state.stage.requires_distinct_actor or state.is_final_stage:
+        access.require_distinct_actor(
+            workflow.previous_reviewer(db, EVIDENCE, evidence_id) or verified_by
+        )
+    if state.is_final_stage:
+        access.require_distinct_actor(verified_by)
 
     record_decision(
         db,
@@ -348,7 +374,36 @@ async def approve_evidence(
         reviewer=access.user,
         comments=decision.comments if decision else None,
         entity_version=version,
+        workflow_stage_id=state.stage.id if state.stage else None,
     )
+
+    if not state.is_final_stage:
+        # More review to come, so the record is not approved yet. The stage
+        # that was just cleared is on the trail either way.
+        audit.record(
+            db,
+            action=audit.STAGE_CLEARED,
+            entity_type="evidence",
+            entity_id=evidence_id,
+            user=access.user,
+            organisation_id=organisation_id,
+            evidence_id=evidence_id,
+            new_values={
+                "stage": state.stage.name if state.stage else None,
+                "remaining": state.remaining_after_this,
+            },
+            request=request,
+        )
+        db.refresh(evidence)
+        return evidence
+
+    approved = evidence_repo.mark_approved(evidence_id, access.user.id)
+
+    # An indicator's current value is whatever the most recent approved
+    # evidence measured, so a reported figure always traces to a record.
+    moved = record_measurement(db, approved)
+    if moved is not None:
+        db.commit()
 
     audit.record(
         db,

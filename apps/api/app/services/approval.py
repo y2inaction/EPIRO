@@ -22,11 +22,17 @@ def record_decision(
     reviewer: User,
     comments: Optional[str] = None,
     entity_version: Optional[int] = None,
+    workflow_stage_id: Optional[uuid.UUID] = None,
 ) -> ApprovalRecord:
     """Append a decision to the approval trail.
 
     Every outcome is kept, including rejections, so the record shows what was
     turned down and why rather than only what eventually went through.
+
+    ``workflow_stage_id`` names the configured stage the decision cleared,
+    where the organisation has defined a workflow. How far a record has got is
+    read back from these entries rather than tracked separately; see
+    app/services/workflow.py.
     """
     record = ApprovalRecord(
         entity_type=entity_type,
@@ -36,6 +42,7 @@ def record_decision(
         reviewer_id=reviewer.id,
         comments=comments,
         entity_version=entity_version,
+        workflow_stage_id=workflow_stage_id,
         created_by=reviewer.id,
     )
 
