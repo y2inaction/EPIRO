@@ -3,8 +3,9 @@
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.models import Organisation, Role
 from app.security import create_access_token, verify_password
-from tests.conftest import auth_header, make_user
+from tests.conftest import auth_header, grant_role, make_organisation, make_user, member
 
 PASSWORD = "correct-horse-battery"
 
@@ -185,3 +186,56 @@ class TestChangePassword:
             },
         )
         assert response.status_code == 401
+
+
+class TestCurrentUserMemberships:
+    """A client cannot render a workspace without knowing the caller's roles."""
+
+    def test_me_reports_the_organisations_the_caller_belongs_to(
+        self, client: TestClient, db: Session, organisation: Organisation
+    ):
+        user = member(db, organisation, Role.VERIFIER)
+
+        response = client.get("/api/v1/users/me", headers=auth_header(user))
+
+        assert response.status_code == 200
+        memberships = response.json()["memberships"]
+        assert len(memberships) == 1
+        assert memberships[0]["organisation_id"] == str(organisation.id)
+        assert memberships[0]["name"] == organisation.name
+        assert memberships[0]["role"] == "verifier"
+
+    def test_a_role_is_reported_per_organisation(
+        self, client: TestClient, db: Session, organisation: Organisation
+    ):
+        """Roles are held per organisation, so the same person can differ."""
+        other = make_organisation(db)
+        user = member(db, organisation, Role.VERIFIER)
+        grant_role(db, user, other, Role.APPROVER)
+
+        response = client.get("/api/v1/users/me", headers=auth_header(user))
+
+        roles = {m["organisation_id"]: m["role"] for m in response.json()["memberships"]}
+        assert roles[str(organisation.id)] == "verifier"
+        assert roles[str(other.id)] == "approver"
+
+    def test_another_persons_memberships_are_never_included(
+        self, client: TestClient, db: Session, organisation: Organisation
+    ):
+        member(db, organisation, Role.APPROVER)
+        outsider = make_user(db)
+
+        response = client.get("/api/v1/users/me", headers=auth_header(outsider))
+
+        assert response.status_code == 200
+        assert response.json()["memberships"] == []
+
+    def test_the_password_hash_is_never_returned(
+        self, client: TestClient, db: Session, organisation: Organisation
+    ):
+        user = member(db, organisation, Role.VERIFIER)
+
+        body = client.get("/api/v1/users/me", headers=auth_header(user)).json()
+
+        assert "password_hash" not in body
+        assert "password" not in body

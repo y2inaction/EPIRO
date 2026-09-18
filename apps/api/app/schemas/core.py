@@ -685,6 +685,17 @@ class ScenarioResponse(ScenarioBase):
     updated_at: datetime
 
 
+class VerificationNotes(BaseModel):
+    """What a verifier found when checking a record against its source.
+
+    Carried in the body rather than the query string. These notes are internal
+    and can name people who were contacted to confirm a figure; a query string
+    is written into every access log and proxy along the way.
+    """
+
+    notes: str = Field("", max_length=5000)
+
+
 class ApprovalDecisionRequest(BaseModel):
     """Optional detail supplied with an approval decision."""
 

@@ -9,9 +9,14 @@ from sqlalchemy.orm import Session
 from app.authorization import AccessControl, get_access
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import User, user_organisation
+from app.models import Organisation, User, user_organisation
 from app.repositories.user import UserRepository
-from app.schemas.auth import UserResponse, UserUpdate
+from app.schemas.auth import (
+    CurrentUserResponse,
+    OrganisationMembership,
+    UserResponse,
+    UserUpdate,
+)
 
 router = APIRouter()
 
@@ -31,12 +36,41 @@ def _shares_an_organisation(db: Session, access: AccessControl, user_id: uuid.UU
     )
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=CurrentUserResponse)
 async def get_current_user_profile(
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """Get current user profile."""
-    return current_user
+    """The caller's own profile, with the memberships that decide what they may do.
+
+    Roles are held per organisation, so a client cannot know which actions to
+    offer until it knows which organisations the caller is in and with which
+    role in each. Only the caller's own memberships are ever returned.
+    """
+    rows = (
+        db.query(
+            user_organisation.c.organisation_id,
+            user_organisation.c.role,
+            Organisation.name,
+            Organisation.code,
+        )
+        .join(Organisation, Organisation.id == user_organisation.c.organisation_id)
+        .filter(user_organisation.c.user_id == current_user.id)
+        .order_by(Organisation.name)
+        .all()
+    )
+
+    profile = CurrentUserResponse.model_validate(current_user)
+    profile.memberships = [
+        OrganisationMembership(
+            organisation_id=row.organisation_id,
+            name=row.name,
+            code=row.code,
+            role=row.role.value if hasattr(row.role, "value") else str(row.role),
+        )
+        for row in rows
+    ]
+    return profile
 
 
 @router.put("/me", response_model=UserResponse)

@@ -21,7 +21,7 @@ contradicts this file, this file is right and the other one is stale.
 
 - 19 database tables, one Alembic history, no schema drift (`alembic check`).
 - 99 API operations across 14 routers.
-- 251 backend tests at 87% line coverage, plus 40 frontend tests.
+- 255 backend tests at 87% line coverage, plus 62 frontend tests.
 - Seven CI jobs green: lint and format, type check, backend tests, frontend
   tests, Docker build, dependency audit, security scan.
 
@@ -84,13 +84,20 @@ visible rather than implied by absence.
 
 ### Front end
 
-**PARTIAL.** The public portal is **CONFIRMED**: seven routes, responsive,
-keyboard navigable, working in light and dark, verified against a running API.
+**PARTIAL.**
 
-Everything else is **NOT BUILT**. There is no login, no evidence workspace, no
-editorial screen for drafting or approving a story, no triage queue for
-questions and no dashboard. Every internal capability CONFIRMED above is
-reachable only through the API.
+**CONFIRMED:** the public portal (seven routes) and the evidence workspace —
+sign-in, the records of each organisation the caller belongs to, and a record
+page offering exactly the workflow actions that person's role and that
+record's state allow. Verified against a running stack by taking one record
+from draft to published to withdrawn as three different people.
+
+The session token is held in an httpOnly cookie, so page script cannot read
+it and every authenticated call happens on the server.
+
+**NOT BUILT:** any editorial screen for stories, the question triage queue,
+project and programme management, user administration, and any dashboard.
+Those capabilities are CONFIRMED above but reachable only through the API.
 
 ---
 
@@ -131,3 +138,12 @@ Honest caveats about things that do work:
    database constraint.
 4. **The approval trail is append-only by convention, not by permission.**
    Nothing in the schema prevents a direct database write from altering it.
+5. **A withdrawn record can stay on the public portal for up to 60 seconds.**
+   The portal revalidates its cached pages on that interval, so a retraction
+   is not immediate in the browser even though the API stops serving the
+   record at once. Measured, not assumed: after a withdrawal the API returned
+   the record as gone immediately and the portal cleared on the next
+   revalidation. Withdrawal is the mechanism for taking back something that
+   should not be public, so the delay matters. The proper fix is for the API
+   to call a revalidation endpoint on the portal when a record is withdrawn,
+   which needs a shared secret and an endpoint that does not exist yet.

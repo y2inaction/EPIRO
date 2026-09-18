@@ -36,6 +36,7 @@ from app.schemas.core import (
     EvidenceResponse,
     EvidenceUpdate,
     RejectionRequest,
+    VerificationNotes,
     WithdrawalRequest,
 )
 from app.services.approval import EVIDENCE, decisions_for, record_decision
@@ -280,11 +281,12 @@ async def delete_evidence(
 async def verify_evidence(
     request: Request,
     evidence_id: uuid.UUID,
-    notes: str = Query(""),
+    verification: Optional[VerificationNotes] = None,
     access: AccessControl = Depends(get_access),
     db: Session = Depends(get_db),
 ):
     """Record verification of evidence."""
+    notes = verification.notes if verification else ""
     evidence_repo = EvidenceRepository(db)
     evidence = _get_scoped_evidence(evidence_repo, evidence_id, access)
     access.require_role(evidence.organisation_id, EVIDENCE_VERIFIERS)

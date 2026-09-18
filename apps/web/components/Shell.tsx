@@ -7,6 +7,10 @@ const NAV = [
   { href: '/search', label: 'Search' },
 ] as const
 
+// Separated from the portal nav: this is the staff entrance, not part of what
+// the public is browsing.
+const STAFF_LINK = { href: '/workspace', label: 'Workspace' } as const
+
 const NAV_LINK =
   'rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition ' +
   'hover:bg-slate-100 hover:text-slate-900 ' +
@@ -48,6 +52,13 @@ export function SiteHeader() {
             </Link>
           ))}
         </nav>
+
+        <Link
+          href={STAFF_LINK.href}
+          className={`${NAV_LINK} ml-auto border border-slate-300 dark:border-slate-700`}
+        >
+          {STAFF_LINK.label}
+        </Link>
       </div>
     </header>
   )
