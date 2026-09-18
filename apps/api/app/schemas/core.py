@@ -9,7 +9,9 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models.core import (
     ApprovalDecision,
+    DrillStatus,
     EvidenceStatus,
+    FindingSeverity,
     GeographyLevel,
     IntegrityFinding,
     IntegritySignalPriority,
@@ -18,6 +20,7 @@ from app.models.core import (
     ProjectStatus,
     QuestionStatus,
     ReadinessStatus,
+    Role,
     SourceReliability,
     SourceType,
     StoryStatus,
@@ -741,6 +744,132 @@ class IntegritySignalResponse(IntegritySignalBase):
     updated_at: datetime
 
 
+class PlaybookStepInput(BaseModel):
+    """One step of a response plan.
+
+    ``responsible_role`` is required: a plan that does not say who acts is not
+    a plan, and there is no sensible default for whose job something is.
+    """
+
+    position: int = Field(..., ge=1)
+    title: str = Field(..., min_length=1, max_length=255)
+    action: str = Field(..., min_length=1, max_length=10000)
+    responsible_role: Role
+    within_hours: Optional[int] = Field(None, ge=0, le=8760)
+
+
+class PlaybookStepResponse(PlaybookStepInput):
+    """A stored playbook step."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+
+
+class PlaybookInput(BaseModel):
+    """A complete response plan, replacing whatever was there before.
+
+    Sent whole rather than step by step, because the steps are ordered and a
+    per-step edit would leave the ordering briefly meaningless.
+    """
+
+    steps: List[PlaybookStepInput] = Field(..., min_length=1)
+
+
+class DrillSchedule(BaseModel):
+    """A commitment to rehearse a scenario on a date."""
+
+    scheduled_for: date
+
+
+class DrillFindingInput(BaseModel):
+    """Something a rehearsal showed to be wrong.
+
+    Describes what the response could not do. Spec section 4 forbids profiling
+    people, and a drill is a place where "who let us down" would be the
+    tempting field; there is deliberately none.
+    """
+
+    description: str = Field(..., min_length=1, max_length=10000)
+    severity: FindingSeverity = FindingSeverity.OBSERVATION
+
+
+class DrillCompletion(BaseModel):
+    """What happened when the scenario was rehearsed.
+
+    The summary is required. A completed drill with no account of it is a date,
+    and a date is what the previous design mistook for readiness.
+    """
+
+    summary: str = Field(..., min_length=1, max_length=20000)
+    findings: List[DrillFindingInput] = Field(default_factory=list)
+
+
+class DrillCancellation(BaseModel):
+    """Why a planned rehearsal did not happen."""
+
+    reason: str = Field(..., min_length=1, max_length=2000)
+
+
+class FindingResolution(BaseModel):
+    """How a gap a rehearsal found was closed."""
+
+    resolution: str = Field(..., min_length=1, max_length=10000)
+
+
+class DrillFindingResponse(BaseModel):
+    """A stored drill finding."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    drill_id: uuid.UUID
+    description: str
+    severity: FindingSeverity
+    raised_by: Optional[uuid.UUID] = None
+    resolved_at: Optional[datetime] = None
+    resolved_by: Optional[uuid.UUID] = None
+    resolution: Optional[str] = None
+    created_at: datetime
+
+
+class DrillResponse(BaseModel):
+    """A scheduled or completed rehearsal."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    scenario_id: uuid.UUID
+    scheduled_for: date
+    status: DrillStatus
+    completed_at: Optional[datetime] = None
+    conducted_by: Optional[uuid.UUID] = None
+    summary: Optional[str] = None
+    cancellation_reason: Optional[str] = None
+    findings: List[DrillFindingResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReadinessDeclaration(BaseModel):
+    """A statement of how ready the organisation is, and why.
+
+    The rationale is required. A readiness colour with no stated reason is a
+    number on a dashboard that nobody can be held to, and the whole point of
+    recording it here is that somebody can.
+    """
+
+    status: ReadinessStatus
+    rationale: str = Field(..., min_length=1, max_length=5000)
+
+
+class ReadinessFloor(BaseModel):
+    """The best status a scenario's record supports, and why not better."""
+
+    status: ReadinessStatus
+    reasons: List[str]
+
+
 class ScenarioBase(BaseModel):
     """Base scenario schema."""
 
@@ -751,20 +880,58 @@ class ScenarioBase(BaseModel):
 
 
 class ScenarioCreate(ScenarioBase):
-    """Scenario creation schema."""
+    """Register something the organisation must be ready for.
 
-    organisation_id: Optional[uuid.UUID] = None
+    There is no status field. A new scenario starts at the worst honest answer
+    and is declared upwards once there is a record to support it; letting a
+    creator set GREEN on an empty record is the hole the whole feature exists
+    to close.
+    """
+
+    organisation_id: uuid.UUID
+    owner: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    playbook_url: Optional[str] = Field(None, max_length=500)
+    drill_interval_days: Optional[int] = Field(None, ge=1, le=3650)
+
+
+class ScenarioUpdate(BaseModel):
+    """Revise a scenario's description or cadence."""
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    category: Optional[str] = None
+    description: Optional[str] = None
+    trigger: Optional[str] = None
+    owner: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    playbook_url: Optional[str] = Field(None, max_length=500)
+    drill_interval_days: Optional[int] = Field(None, ge=1, le=3650)
 
 
 class ScenarioResponse(ScenarioBase):
-    """Scenario response schema."""
+    """A scenario, its declared readiness, and the floor beneath it.
+
+    ``floor`` is served alongside ``status`` so that a reader can see not only
+    what was declared but what the record actually supports. A declared status
+    equal to its floor is as good as the evidence allows; one worse than the
+    floor is somebody exercising judgement, which they are entitled to do.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    organisation_id: Optional[uuid.UUID] = None
     status: ReadinessStatus
+    status_rationale: Optional[str] = None
+    status_declared_by: Optional[uuid.UUID] = None
+    status_declared_at: Optional[datetime] = None
+    owner: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
     playbook_url: Optional[str] = None
+    drill_interval_days: Optional[int] = None
     last_drill_date: Optional[date] = None
+    playbook_steps: List[PlaybookStepResponse] = []
+    floor: Optional[ReadinessFloor] = None
     created_at: datetime
     updated_at: datetime
 

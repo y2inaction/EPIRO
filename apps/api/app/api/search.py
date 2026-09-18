@@ -13,6 +13,7 @@ from app.schemas.core import (
     EvidenceResponse,
     IntegritySignalResponse,
     QuestionResponse,
+    ScenarioResponse,
     StoryResponse,
 )
 from app.services import search as search_service
@@ -42,22 +43,12 @@ def _project_summary(item: Any) -> Dict[str, Any]:
     }
 
 
-def _scenario_summary(item: Any) -> Dict[str, Any]:
-    """Scenarios have no response schema yet."""
-    return {
-        "id": item.id,
-        "name": item.name,
-        "category": item.category,
-        "status": item.status.value,
-    }
-
-
 SERIALISERS: Dict[str, Callable[[Any], Any]] = {
     search_service.EVIDENCE: EvidenceResponse.model_validate,
     search_service.STORY: StoryResponse.model_validate,
     search_service.QUESTION: QuestionResponse.model_validate,
     search_service.PROJECT: _project_summary,
-    search_service.SCENARIO: _scenario_summary,
+    search_service.SCENARIO: ScenarioResponse.model_validate,
     search_service.INTEGRITY_SIGNAL: IntegritySignalResponse.model_validate,
 }
 

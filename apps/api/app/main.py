@@ -19,6 +19,7 @@ from app.api import (
     projects,
     public,
     questions,
+    scenarios,
     search,
     sources,
     stories,
@@ -119,6 +120,7 @@ app.include_router(
     prefix="/api/v1/integrity",
     tags=["Information integrity"],
 )
+app.include_router(scenarios.router, prefix="/api/v1/scenarios", tags=["Readiness"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])
 app.include_router(workflows.router, prefix="/api/v1/workflows", tags=["Workflows"])
 # No authentication: this is the portal the published information is for.

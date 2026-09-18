@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from geoalchemy2 import Geometry
 from sqlalchemy import (
@@ -180,12 +180,49 @@ class IntegrityFinding(str, Enum):
 
 
 class ReadinessStatus(str, Enum):
-    """Readiness matrix status."""
+    """How ready an organisation is for one scenario (spec sections 28-31).
+
+    Ordered worst-last. ``READINESS_SEVERITY`` gives the ordering a number so
+    that "no better than" comparisons are made against one definition rather
+    than re-derived at each call site.
+    """
 
     GREEN = "green"
     AMBER = "amber"
     RED = "red"
     BLACK = "black"
+
+
+# Severity order, worst highest. A declared status may be this bad or worse
+# than the evidence supports, never better — see services/readiness.py.
+READINESS_SEVERITY = {
+    ReadinessStatus.GREEN: 0,
+    ReadinessStatus.AMBER: 1,
+    ReadinessStatus.RED: 2,
+    ReadinessStatus.BLACK: 3,
+}
+
+
+class DrillStatus(str, Enum):
+    """States a rehearsal of a scenario moves through."""
+
+    SCHEDULED = "scheduled"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class FindingSeverity(str, Enum):
+    """How badly a drill finding affects the ability to respond.
+
+    ``CRITICAL`` is the level that holds a scenario's readiness down until it
+    is resolved: a gap that would stop the response working is not something an
+    organisation may declare its way past.
+    """
+
+    OBSERVATION = "observation"
+    MINOR = "minor"
+    MAJOR = "major"
+    CRITICAL = "critical"
 
 
 class ProjectStatus(str, Enum):
@@ -1093,12 +1130,31 @@ class IntegritySignal(TimestampedModel):
 
 
 class Scenario(TimestampedModel):
-    """Readiness scenario model."""
+    """Something the organisation must be ready for, and how ready it is.
+
+    Spec sections 28-31. The column that matters is ``status``, because it is
+    the one an outsider reads as a claim: "we are ready for this".
+
+    It is therefore **declared, not simply set**. Every declaration carries a
+    rationale and the person who made it, and it is checked against a floor
+    computed from what the record actually shows — whether a playbook exists,
+    whether it has ever been rehearsed, whether the rehearsal is overdue, and
+    whether anything critical found in it is still open. An owner may declare a
+    status worse than the floor, because they may know something the system
+    does not. They may not declare one better. See services/readiness.py.
+
+    ``last_drill_date`` was the whole of the previous design: a date, with no
+    record of what the drill found. A rehearsal whose findings are not written
+    down is indistinguishable from one that never happened, so the date is now
+    derived from completed Drill records rather than typed in.
+    """
 
     __tablename__ = "scenario"
 
-    organisation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=True
+    # Non-null: readiness is something a particular body is accountable for,
+    # and an ownerless scenario is a colour nobody answers for.
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[Optional[str]] = mapped_column(String(50))
@@ -1106,14 +1162,46 @@ class Scenario(TimestampedModel):
     trigger: Mapped[Optional[str]] = mapped_column(Text)
     status: Mapped[ReadinessStatus] = mapped_column(
         SQLEnum(ReadinessStatus, values_callable=_enum_values),
-        default=ReadinessStatus.GREEN,
+        # A scenario with nothing behind it yet starts at the worst honest
+        # answer, not the most flattering one. Declaring GREEN is an act
+        # somebody performs and signs; it is not where a record begins.
+        default=ReadinessStatus.RED,
         nullable=False,
     )
+    # Why the current status was declared, and by whom. Required on every
+    # declaration: a readiness colour with no stated reason is a number on a
+    # dashboard that nobody can be held to.
+    status_rationale: Mapped[Optional[str]] = mapped_column(Text)
+    status_declared_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+    status_declared_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     owner: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
     )
+    geography_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("geographic_area.id"), nullable=True
+    )
+    # An external plan document may exist alongside the steps below; it is not
+    # a substitute for them, because a URL cannot be checked for whether it
+    # says who does what.
     playbook_url: Mapped[Optional[str]] = mapped_column(String(500))
+    # How often this scenario must be rehearsed for its drill to count as
+    # current. Null means no cadence has been set, which is itself a gap.
+    drill_interval_days: Mapped[Optional[int]] = mapped_column(Integer)
     last_drill_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    organisation: Mapped[Optional["Organisation"]] = relationship()
+    playbook_steps: Mapped[List["PlaybookStep"]] = relationship(
+        back_populates="scenario",
+        cascade="all, delete-orphan",
+        order_by="PlaybookStep.position",
+    )
+    drills: Mapped[List["Drill"]] = relationship(
+        back_populates="scenario",
+        cascade="all, delete-orphan",
+        order_by="Drill.scheduled_for",
+    )
 
     search_vector: Mapped[Optional[str]] = mapped_column(
         TSVECTOR,
@@ -1124,7 +1212,114 @@ class Scenario(TimestampedModel):
 
     __table_args__ = (
         Index("idx_scenario_status", "status"),
+        Index("idx_scenario_organisation_id", "organisation_id"),
         Index("idx_scenario_search", "search_vector", postgresql_using="gin"),
+    )
+
+
+class PlaybookStep(TimestampedModel):
+    """One step of the plan for responding to a scenario.
+
+    A plan that does not say who acts is not a plan, so ``responsible_role`` is
+    required. ``within_hours`` is what makes a drill checkable: without a
+    stated expectation there is nothing for a rehearsal to find wanting.
+    """
+
+    __tablename__ = "playbook_step"
+
+    scenario_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scenario.id", ondelete="CASCADE"), nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    responsible_role: Mapped[Role] = mapped_column(
+        SQLEnum(Role, values_callable=_enum_values), nullable=False
+    )
+    within_hours: Mapped[Optional[int]] = mapped_column(Integer)
+
+    scenario: Mapped["Scenario"] = relationship(back_populates="playbook_steps")
+
+    __table_args__ = (
+        UniqueConstraint("scenario_id", "position", name="uq_playbook_step_position"),
+        Index("idx_playbook_step_scenario_id", "scenario_id"),
+    )
+
+
+class Drill(TimestampedModel):
+    """A rehearsal of a scenario, and what it found.
+
+    Scheduling one is a commitment; completing one requires a summary, because
+    the point of the record is what was learned rather than that a date passed.
+    """
+
+    __tablename__ = "drill"
+
+    scenario_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scenario.id", ondelete="CASCADE"), nullable=False
+    )
+    scheduled_for: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[DrillStatus] = mapped_column(
+        SQLEnum(DrillStatus, values_callable=_enum_values),
+        default=DrillStatus.SCHEDULED,
+        nullable=False,
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    conducted_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+    summary: Mapped[Optional[str]] = mapped_column(Text)
+    # Why a rehearsal did not happen. Required on cancellation, so that a
+    # scenario's drill history shows the gaps as well as the exercises.
+    cancellation_reason: Mapped[Optional[str]] = mapped_column(Text)
+
+    scenario: Mapped["Scenario"] = relationship(back_populates="drills")
+    findings: Mapped[List["DrillFinding"]] = relationship(
+        back_populates="drill",
+        cascade="all, delete-orphan",
+        order_by="DrillFinding.created_at",
+    )
+
+    __table_args__ = (
+        Index("idx_drill_scenario_id", "scenario_id"),
+        Index("idx_drill_status", "status"),
+    )
+
+
+class DrillFinding(TimestampedModel):
+    """Something a rehearsal showed to be wrong.
+
+    Resolution is recorded by a different person from the one who raised it.
+    "I found a problem in my own drill and I say I have fixed it" is exactly
+    the self-certification the rest of the platform refuses, and a critical
+    finding holds readiness down until somebody else confirms it is closed.
+    """
+
+    __tablename__ = "drill_finding"
+
+    drill_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("drill.id", ondelete="CASCADE"), nullable=False
+    )
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[FindingSeverity] = mapped_column(
+        SQLEnum(FindingSeverity, values_callable=_enum_values),
+        default=FindingSeverity.OBSERVATION,
+        nullable=False,
+    )
+    raised_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    resolved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+    resolution: Mapped[Optional[str]] = mapped_column(Text)
+
+    drill: Mapped["Drill"] = relationship(back_populates="findings")
+
+    __table_args__ = (
+        Index("idx_drill_finding_drill_id", "drill_id"),
+        Index("idx_drill_finding_severity", "severity"),
     )
 
 

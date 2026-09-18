@@ -65,7 +65,7 @@ content type can express it:
 | Filter | evidence | project | story | question | scenario | integrity_signal |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|
 | date | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| geography | ✓ | ✓ | — | ✓ | — | ✓ |
+| geography | ✓ | ✓ | — | ✓ | ✓ | ✓ |
 | theme | ✓ | — | — | — | — | ✓ |
 | source | ✓ | — | — | — | — | — |
 | status | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |

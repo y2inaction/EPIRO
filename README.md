@@ -133,10 +133,16 @@ record is about information — see
 - Intelligence reporting
 
 ### Organizational Readiness
-- Scenario management
-- Playbook tracking
-- Status indicators (GREEN/AMBER/RED/BLACK)
-- Drill scheduling
+- Scenarios with ordered playbooks, each step naming who acts
+- Drills that record what they found, not just that they happened
+- Status indicators (GREEN/AMBER/RED/BLACK) that **cannot be declared better
+  than the record supports** — no plan caps a scenario at RED, an untested or
+  stale plan caps it at AMBER, and no role overrides that
+- Findings confirmed resolved by someone other than whoever raised them
+
+See [docs/READINESS.md](docs/READINESS.md). Readiness is deliberately internal:
+publishing where a body is weak tells the public something true and tells
+anyone who would exploit it exactly where to look.
 
 ## API Endpoints
 
@@ -156,12 +162,13 @@ sections above describe the product as a whole, and
 - `/stories/` - Public information
 - `/questions/` - Citizen questions
 - `/integrity/` - Information integrity
+- `/scenarios/` - Readiness, playbooks and drills
 - `/workflows/` - Configurable review stages
 - `/search/` - Global search
 - `/public/` - The public portal (no authentication)
 
-Not yet built, and so not listed above: field missions, intelligence reports
-and readiness scenarios.
+Not yet built, and so not listed above: field missions and intelligence
+reports.
 
 ## Development
 

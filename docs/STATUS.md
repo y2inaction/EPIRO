@@ -19,9 +19,9 @@ contradicts this file, this file is right and the other one is stale.
 
 ## At a glance
 
-- 21 database tables, one Alembic history, no schema drift (`alembic check`).
-- 117 API operations across 16 routers.
-- 315 backend tests at 88% line coverage, plus 96 frontend tests.
+- 24 database tables, one Alembic history, no schema drift (`alembic check`).
+- 128 API operations across 17 routers.
+- 351 backend tests at 89% line coverage, plus 96 frontend tests.
 - Seven CI jobs green: lint and format, type check, backend tests, frontend
   tests, Docker build, dependency audit, security scan.
 
@@ -52,6 +52,7 @@ contradicts this file, this file is right and the other one is stale.
 | 16 | Multilingual | **PARTIAL** | Content carries a language code and can be filtered by it. Translations of the same story are **not linked to each other**, and there is no translation workflow. |
 | 35 | Global search | **PARTIAL** | Full-text with ranking and all eight filters across evidence, projects, stories, questions, scenarios and integrity signals. The other content types section 35 names — documents, stakeholders, field missions, intelligence, media, tasks — have no entity yet, and the API says so in its `unsearchable_types` field. |
 | 25–26 | Information integrity | **PARTIAL** | A claim circulating in public is logged, assessed with a finding **and** its reasoning, approved by someone other than the assessor, answered publicly by someone other than the approver, and withdrawn rather than deleted. A determination cannot be approved unless it cites evidence the organisation has itself approved; `unresolved` is the one exempt finding, because it asserts nothing to source. Published corrections are on the portal with their reasoning and evidence citation. **Not built:** public submission of a signal, staged review, a staff screen (the workflow is API-only), and any automated detection — nothing scans or scores anything. See [INFORMATION_INTEGRITY.md](INFORMATION_INTEGRITY.md). |
+| 28–31 | Readiness and scenarios | **PARTIAL** | A scenario carries an ordered playbook whose every step names a responsible role, rehearsals that record what they found, and findings a **different person** confirms resolved. The readiness colour is declared with a rationale and checked against a floor computed from the record — no playbook caps it at RED, never or long-ago rehearsed caps it at AMBER, an open critical finding caps it at AMBER — and **nobody, including a platform administrator, may declare better than the floor**. A scenario starts RED, and completing a drill never improves the declared status by itself. **Not built:** a front end, notifications when a drill falls out of date, any organisation-level rollup, and public exposure — readiness is deliberately internal. See [READINESS.md](READINESS.md). |
 | 36 | Approval engine | **PARTIAL** | Approvals are recorded with reviewer, timestamp, decision, comments and the version reviewed, across evidence, stories and questions. An organisation defines its own **review stages** for evidence, and each cleared stage is named on the trail. Two limits: the coarse lifecycle is deliberately fixed so an organisation cannot redefine what "published" means to the public, and staged review is wired into **evidence only** — stories and questions keep the single implicit stage. |
 
 ### Not started
@@ -69,7 +70,6 @@ visible rather than implied by absence.
 | 22 | Executive dashboard | **NOT BUILT** |
 | 23–24 | Operating rhythm workflows | **NOT BUILT** |
 | 27 | Creative layer | **NOT BUILT** |
-| 28–31 | Readiness and scenarios | **NOT BUILT** — the `scenario` table exists and is searchable, but there is no readiness workflow. |
 | 32 | AI assistant | **NOT BUILT** |
 | 33 | RAG / knowledge system | **NOT BUILT** |
 | 34 | Document processing and OCR | **NOT BUILT** |
@@ -103,7 +103,8 @@ it and every authenticated call happens on the server.
 
 **NOT BUILT:** creating evidence or drafting a story in the interface (both
 exist in the API), the integrity workflow as a staff screen (the API is
-complete and exercised end to end; only the public side has a front end),
+complete and exercised end to end; only the public side has a front end), the
+readiness matrix as a screen (API-only, and deliberately not public at all),
 project and programme management, user administration, and any dashboard.
 
 ---
@@ -133,6 +134,11 @@ a handle, an audience, a segment or a person, and a test asserts that none has
 appeared. The public wording is held to the same line by a test that no
 finding's description says "spread by", "targeted" or "audience". The record is
 about information; the people carrying it are not the platform's business.
+
+The same applies inward. A readiness drill (§28–31) is the obvious place a
+"who let us down" column would appear, so `drill_finding` has none, and a test
+asserts that. A finding describes what the response could not do. Section 4's
+prohibition on profiling is not only about citizens.
 
 ---
 

@@ -100,7 +100,7 @@ RESTful API with OpenAPI documentation:
 - `/api/v1/field-missions/` - Field work
 - `/api/v1/integrity/` - Information integrity
 - `/api/v1/intelligence/` - Intelligence reports
-- `/api/v1/scenarios/` - Readiness scenarios
+- `/api/v1/scenarios/` - Readiness scenarios, playbooks and drills
 - `/api/v1/search/` - Global search
 
 ## Implementation Phases

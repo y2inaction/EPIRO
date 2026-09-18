@@ -777,6 +777,122 @@ the worst thing on the platform to leave standing.
   published; withdraw instead.
 - `GET /integrity/{signal_id}/approvals` — the approval trail.
 
+### Readiness (`/scenarios`)
+
+Spec sections 28-31. One rule governs the whole thing: **a readiness status may
+be declared as bad as you like, and no better than the record supports.** See
+[READINESS.md](READINESS.md).
+
+Readiness is internal. There is no public endpoint, deliberately.
+
+#### Register a scenario
+```
+POST /scenarios/
+Authorization: Bearer <manager_token>
+{
+  "organisation_id": "uuid",
+  "name": "Flood response \u2014 Bida flood plain",
+  "description": "What we do when the river rises.",
+  "trigger": "River level above 6 metres at the Bida gauge.",
+  "drill_interval_days": 180
+}
+
+Response: 201 Created
+{
+  ...scenario with status = "red",
+  "floor": {
+    "status": "red",
+    "reasons": [
+      "The scenario has no playbook steps, so there is no plan",
+      "The scenario has never been rehearsed, so the plan is untested"
+    ]
+  }
+}
+```
+
+There is no status field on the request. A scenario starts RED because at
+creation there is by definition nothing to support anything better.
+
+#### Write the playbook
+```
+PUT /scenarios/{scenario_id}/playbook
+Authorization: Bearer <manager_token>
+{
+  "steps": [
+    {"position": 1, "title": "Confirm the gauge reading",
+     "action": "Call the gauge station and confirm the level directly.",
+     "responsible_role": "field_officer", "within_hours": 1},
+    {"position": 2, "title": "Notify the ward heads",
+     "action": "Contact every ward head in the flood plain.",
+     "responsible_role": "content_manager", "within_hours": 2}
+  ]
+}
+
+Response: 200 OK
+400 \u2014 steps are not numbered 1..n with no gaps or repeats
+422 \u2014 a step names no responsible_role
+```
+
+Sent whole rather than step by step, because the steps are ordered.
+
+#### Rehearse it
+```
+POST /scenarios/{scenario_id}/drills
+{"scheduled_for": "2026-10-01"}
+Response: 201 Created
+
+POST /scenarios/drills/{drill_id}/complete
+Authorization: Bearer <conductor_token>
+{
+  "summary": "Rehearsed the call-down. Two ward heads could not be reached.",
+  "findings": [
+    {"description": "The ward head contact list is two years out of date.",
+     "severity": "critical"}
+  ]
+}
+Response: 200 OK
+
+POST /scenarios/drills/{drill_id}/cancel
+{"reason": "The venue was unavailable."}
+Response: 200 OK
+```
+
+A completed drill requires a summary. Cancelled drills stay on the record: a
+scenario whose rehearsals keep being called off is one a review should see.
+
+#### Close a finding
+```
+POST /scenarios/findings/{finding_id}/resolve
+Authorization: Bearer <someone_else_token>
+{"resolution": "Rebuilt from the ward register and checked against the roll."}
+
+Response: 200 OK
+403 \u2014 the person who raised the finding may not confirm it resolved
+409 \u2014 already resolved
+```
+
+#### Declare readiness
+```
+POST /scenarios/{scenario_id}/declare
+Authorization: Bearer <manager_token>
+{"status": "green", "rationale": "Rehearsed in March; contact list rebuilt."}
+
+Response: 200 OK
+409 \u2014 better than the record supports; the message names the gap
+```
+
+The rationale is required. Declaring *worse* than the floor always succeeds \u2014
+an owner may know something the database does not.
+
+**No role is exempt from the floor, a platform administrator included.**
+
+#### Other operations
+
+- `GET /scenarios/` \u2014 the readiness matrix, filtered by status or organisation.
+- `GET /scenarios/{id}` \u2014 one scenario, its playbook, and its floor.
+- `PUT /scenarios/{id}` \u2014 revise description, owner or drill cadence.
+- `GET /scenarios/{id}/drills` \u2014 every rehearsal, cancellations included.
+
 ### Search (`/search`)
 
 #### Global Search

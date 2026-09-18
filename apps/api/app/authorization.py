@@ -55,6 +55,14 @@ INTEGRITY_MONITORS = frozenset(
     }
 )
 INTEGRITY_ASSESSORS = frozenset({Role.INTEGRITY_ANALYST, Role.VERIFIER, Role.EVIDENCE_MANAGER})
+# Spec sections 28-31. Declaring how ready a body is for something is an
+# executive act, so the set that may do it is small. Rehearsing is not: the
+# people who would have to carry out a plan are the ones who can tell whether
+# it works, so conducting a drill is open wider than declaring readiness.
+READINESS_MANAGERS = frozenset({Role.EXECUTIVE, Role.ANALYST})
+DRILL_CONDUCTORS = frozenset(
+    {Role.EXECUTIVE, Role.ANALYST, Role.FIELD_OFFICER, Role.EVIDENCE_MANAGER}
+)
 
 
 class AccessControl:

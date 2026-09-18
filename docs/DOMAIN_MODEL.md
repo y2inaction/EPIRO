@@ -1,6 +1,6 @@
 # Domain model
 
-19 tables. Every table is created by Alembic; `alembic check` passes with no
+24 tables. Every table is created by Alembic; `alembic check` passes with no
 drift against the models.
 
 ---
@@ -79,8 +79,46 @@ does not require the caller to know how deep the tree goes.
 ## 4. The approval trail
 
 `approval_record` is addressed by `(entity_type, entity_id)` rather than by a
-foreign key per kind, so evidence, stories and questions share one trail. See
-`docs/APPROVAL_WORKFLOW.md`.
+foreign key per kind, so evidence, stories, questions and integrity findings
+share one trail. See `docs/APPROVAL_WORKFLOW.md`.
+
+## 4a. Information integrity
+
+**`integrity_signal`** — a claim circulating in public, and what was found out
+about it. `finding` is the conclusion; `assessment` is the reasoning behind it,
+and they are separate columns because a verdict with no reasoning is the
+unexplainable intelligence spec section 4 rules out.
+
+The table has **no column for who spread a claim** — no account, handle,
+audience or segment. The prohibition is enforced by there being nowhere to put
+such a thing rather than by remembering not to, and a test asserts it. `source`
+and `circulation` describe a channel. See `docs/INFORMATION_INTEGRITY.md`.
+
+## 4b. Readiness
+
+```
+scenario ──▶ playbook_step
+   │
+   └──▶ drill ──▶ drill_finding
+```
+
+**`scenario`** — something the organisation must be ready for. Its `status` is
+**declared**, with a rationale and a declaring user, and checked against a
+floor computed from the other three tables. `last_drill_date` is derived from
+completed drills rather than typed in, so the date and the account of what
+happened cannot disagree.
+
+**`playbook_step`** — one step of the plan. `responsible_role` is not nullable:
+a plan that does not say who acts is not a plan. Positions are unique per
+scenario and must form 1..n.
+
+**`drill`** — a rehearsal. Cancelled drills are kept with their reason, because
+the history of what was *not* rehearsed is part of what a readiness record is
+for.
+
+**`drill_finding`** — what a rehearsal showed to be wrong. Confirmed resolved
+by a different person from the one who raised it. Like `integrity_signal`, it
+has **no blame column**, and a test asserts that. See `docs/READINESS.md`.
 
 ## 5. Audit
 
@@ -92,8 +130,6 @@ prose, because they are queried and reported on.
 
 Honesty about the schema, per spec section 81:
 
-- **`scenario`** — has a model and is searchable, but there is no readiness
-  workflow behind it.
 - **`location`** — a PostGIS point, linked to projects and evidence, but no
   endpoint manages it.
 
