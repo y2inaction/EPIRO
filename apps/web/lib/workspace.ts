@@ -443,3 +443,66 @@ export async function namesFor(dimension: string): Promise<LabelMap> {
   }
   return names
 }
+
+
+// --- The decision register -------------------------------------------------
+
+export interface ActionRecord {
+  id: string
+  organisation_id: string
+  title: string
+  rationale: string
+  origin_type: string
+  origin_id: string
+  scenario_id: string | null
+  owner_id: string
+  status: string
+  due_date: string | null
+  started_at: string | null
+  closed_at: string | null
+  outcome: string | null
+  /** Derived by the server on every read, never stored. */
+  overdue: boolean
+  created_at: string
+  updated_at: string
+}
+
+export function listActions(params: {
+  status?: string
+  overdue?: string
+} = {}): Promise<Result<Page<ActionRecord>>> {
+  const query = new URLSearchParams({ limit: '100' })
+  if (params.status) {
+    query.set('status', params.status)
+  }
+  if (params.overdue) {
+    query.set('overdue', params.overdue)
+  }
+  return request<Page<ActionRecord>>(`/actions/?${query.toString()}`)
+}
+
+export function getAction(id: string): Promise<Result<ActionRecord>> {
+  return request<ActionRecord>(`/actions/${encodeURIComponent(id)}`)
+}
+
+export function acceptAction(id: string): Promise<Result<ActionRecord>> {
+  return request<ActionRecord>(`/actions/${encodeURIComponent(id)}/accept`, { method: 'POST' })
+}
+
+export function startAction(id: string): Promise<Result<ActionRecord>> {
+  return request<ActionRecord>(`/actions/${encodeURIComponent(id)}/start`, { method: 'POST' })
+}
+
+export function completeAction(id: string, outcome: string): Promise<Result<ActionRecord>> {
+  return request<ActionRecord>(`/actions/${encodeURIComponent(id)}/complete`, {
+    method: 'POST',
+    body: JSON.stringify({ outcome }),
+  })
+}
+
+export function dropAction(id: string, outcome: string): Promise<Result<ActionRecord>> {
+  return request<ActionRecord>(`/actions/${encodeURIComponent(id)}/drop`, {
+    method: 'POST',
+    body: JSON.stringify({ outcome }),
+  })
+}

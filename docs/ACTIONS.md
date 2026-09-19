@@ -106,8 +106,11 @@ else — no separate reporting path to drift out of step:
 
 ## 8. What is not built
 
-- **No front end.** The API is complete and exercised; there is no screen for
-  raising or running an action.
+- **No way to raise an action in the interface.** The register and the
+  decision screens exist — `/workspace/actions` with its views, and a screen
+  per action offering exactly the moves the lifecycle allows — but an action
+  is still raised through the API. The form needs an origin picker, which
+  means searching signals, findings, scenarios and evidence from one control.
 - **No notification when an action falls overdue.** The register can say what
   is late; nothing tells anybody.
 - **No dependency between actions**, and no grouping into a plan.
