@@ -162,13 +162,13 @@ sections above describe the product as a whole, and
 - `/stories/` - Public information
 - `/questions/` - Citizen questions
 - `/integrity/` - Information integrity
+- `/missions/` - Field missions, safety check-ins and field capture
 - `/scenarios/` - Readiness, playbooks and drills
 - `/workflows/` - Configurable review stages
 - `/search/` - Global search
 - `/public/` - The public portal (no authentication)
 
-Not yet built, and so not listed above: field missions and intelligence
-reports.
+Not yet built, and so not listed above: intelligence reports.
 
 ## Development
 

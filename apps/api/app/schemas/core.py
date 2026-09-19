@@ -17,10 +17,12 @@ from app.models.core import (
     IntegritySignalPriority,
     IntegritySignalStatus,
     MilestoneStatus,
+    MissionStatus,
     ProjectStatus,
     QuestionStatus,
     ReadinessStatus,
     Role,
+    SafetyState,
     SourceReliability,
     SourceType,
     StoryStatus,
@@ -742,6 +744,164 @@ class IntegritySignalResponse(IntegritySignalBase):
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+class MissionMemberInput(BaseModel):
+    """Somebody going on a mission."""
+
+    user_id: uuid.UUID
+    role_on_mission: Optional[str] = Field(None, max_length=100)
+
+
+class MissionMemberResponse(MissionMemberInput):
+    """A stored mission member."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+
+
+class FieldMissionBase(BaseModel):
+    """A planned trip to gather evidence.
+
+    Carries the area the team is covering and the window it runs in. There is
+    deliberately no per-person position field, here or anywhere else: see the
+    FieldMission model docstring.
+    """
+
+    title: str = Field(..., min_length=1, max_length=255)
+    purpose: str = Field(..., min_length=1, max_length=10000)
+    planned_start: date
+    planned_end: date
+    geography_id: Optional[uuid.UUID] = None
+    project_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    lead_id: Optional[uuid.UUID] = None
+    check_in_interval_hours: Optional[int] = Field(None, ge=1, le=168)
+
+
+class FieldMissionCreate(FieldMissionBase):
+    """Plan a mission.
+
+    The risk assessment may be written here or added before approval, but a
+    mission cannot be approved without one.
+    """
+
+    organisation_id: uuid.UUID
+    risk_assessment: Optional[str] = Field(None, max_length=20000)
+    members: List[MissionMemberInput] = Field(default_factory=list)
+
+
+class FieldMissionUpdate(BaseModel):
+    """Revise a mission that has not yet been approved."""
+
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    purpose: Optional[str] = Field(None, min_length=1, max_length=10000)
+    planned_start: Optional[date] = None
+    planned_end: Optional[date] = None
+    geography_id: Optional[uuid.UUID] = None
+    project_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    lead_id: Optional[uuid.UUID] = None
+    risk_assessment: Optional[str] = Field(None, max_length=20000)
+    check_in_interval_hours: Optional[int] = Field(None, ge=1, le=168)
+
+
+class MissionCompletion(BaseModel):
+    """What the mission found.
+
+    The report is required. A mission with no account of it is a trip, and the
+    point of recording one is what came back.
+    """
+
+    report: str = Field(..., min_length=1, max_length=50000)
+
+
+class MissionCancellation(BaseModel):
+    """Why a planned mission is not going ahead."""
+
+    reason: str = Field(..., min_length=1, max_length=2000)
+
+
+class CheckInInput(BaseModel):
+    """A team reporting on its own safety.
+
+    There is no position field. The note is free text a team may use to say
+    where it is if it chooses; the platform does not require or store a
+    coordinate, because a coordinator needs to know whether people are safe
+    rather than where each of them has been.
+    """
+
+    state: SafetyState = SafetyState.SAFE
+    note: Optional[str] = Field(None, max_length=2000)
+
+
+class CheckInResponse(BaseModel):
+    """A stored check-in."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    mission_id: uuid.UUID
+    state: SafetyState
+    reported_at: datetime
+    reported_by: Optional[uuid.UUID] = None
+    note: Optional[str] = None
+
+
+class SafetyPostureResponse(BaseModel):
+    """How a mission is doing right now, derived from its check-ins."""
+
+    state: SafetyState
+    last_reported_at: Optional[datetime] = None
+    overdue: bool
+    hours_since_report: Optional[float] = None
+    needs_attention: bool
+
+
+class FieldMissionResponse(FieldMissionBase):
+    """A mission, its team and its current safety posture."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    status: MissionStatus
+    risk_assessment: Optional[str] = None
+    approved_by: Optional[uuid.UUID] = None
+    approved_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    report: Optional[str] = None
+    cancellation_reason: Optional[str] = None
+    members: List[MissionMemberResponse] = []
+    safety: Optional[SafetyPostureResponse] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class FieldCapture(BaseModel):
+    """An observation gathered on a mission.
+
+    ``capture_key`` is supplied by the capturing client and makes a retry
+    idempotent: a device on a bad connection that sends the same capture twice
+    gets the same record back, not two. It is unique per organisation.
+
+    Spec section 17's offline toolkit is not built. This is the part of it that
+    could not be added afterwards without rewriting what came before.
+    """
+
+    capture_key: str = Field(..., min_length=8, max_length=128)
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=20000)
+    source_id: uuid.UUID
+    evidence_date: Optional[date] = None
+    geography_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    outcome: Optional[str] = Field(None, max_length=20000)
+    beneficiaries: Optional[int] = Field(None, ge=0)
+    document_url: Optional[str] = Field(None, max_length=500)
+    image_urls: List[str] = Field(default_factory=list)
 
 
 class PlaybookStepInput(BaseModel):

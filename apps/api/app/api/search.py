@@ -11,6 +11,7 @@ from app.authorization import AccessControl, get_access
 from app.database import get_db
 from app.schemas.core import (
     EvidenceResponse,
+    FieldMissionResponse,
     IntegritySignalResponse,
     QuestionResponse,
     ScenarioResponse,
@@ -29,6 +30,7 @@ RESULT_KEYS = {
     search_service.PROJECT: "projects",
     search_service.SCENARIO: "scenarios",
     search_service.INTEGRITY_SIGNAL: "integrity_signals",
+    search_service.FIELD_MISSION: "field_missions",
 }
 
 
@@ -50,6 +52,7 @@ SERIALISERS: Dict[str, Callable[[Any], Any]] = {
     search_service.PROJECT: _project_summary,
     search_service.SCENARIO: ScenarioResponse.model_validate,
     search_service.INTEGRITY_SIGNAL: IntegritySignalResponse.model_validate,
+    search_service.FIELD_MISSION: FieldMissionResponse.model_validate,
 }
 
 
@@ -58,7 +61,9 @@ async def global_search(
     q: str = Query(..., min_length=1, max_length=200),
     content_type: Optional[str] = Query(
         None,
-        description="evidence, story, question, project, scenario or integrity_signal",
+        description=(
+            "evidence, story, question, project, scenario, integrity_signal " "or field_mission"
+        ),
     ),
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),

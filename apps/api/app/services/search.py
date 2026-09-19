@@ -5,10 +5,11 @@ stories, questions, stakeholders, field missions, intelligence, media,
 scenarios and tasks, filtered by date, geography, theme, source, status,
 organisation, verification and owner.
 
-CONFIRMED here: evidence, projects, stories, questions, scenarios and integrity
-signals, with all eight filters. The remaining content types are not searchable
-because the entities do not exist yet — see ``UNBUILT_TYPES``. They are listed
-rather than silently omitted so the gap is visible from the code.
+CONFIRMED here: evidence, projects, stories, questions, scenarios, integrity
+signals and field missions, with all eight filters. The remaining content types
+are not searchable because the entities do not exist yet — see
+``UNBUILT_TYPES``. They are listed rather than silently omitted so the gap is
+visible from the code.
 
 Matching is Postgres full text against a stored, generated tsvector with a GIN
 index, ranked by ts_rank_cd. The previous implementation used
@@ -28,6 +29,7 @@ from sqlalchemy.orm import InstrumentedAttribute, Session
 from app.models import (
     SEARCH_CONFIG,
     Evidence,
+    FieldMission,
     IntegritySignal,
     Project,
     Question,
@@ -39,7 +41,7 @@ from app.services.geography import descendant_ids
 # Spec section 35 names these too. They have no entity yet, so a search cannot
 # cover them; saying so here is the difference between a known gap and a
 # silently incomplete result.
-UNBUILT_TYPES = ("documents", "stakeholders", "field_missions", "intelligence", "media", "tasks")
+UNBUILT_TYPES = ("documents", "stakeholders", "intelligence", "media", "tasks")
 
 EVIDENCE = "evidence"
 PROJECT = "project"
@@ -47,6 +49,7 @@ STORY = "story"
 QUESTION = "question"
 SCENARIO = "scenario"
 INTEGRITY_SIGNAL = "integrity_signal"
+FIELD_MISSION = "field_mission"
 
 # Input that is nothing but words and digits is treated as type-ahead: the
 # last word matches as a prefix, so "hous" finds "housing". Anything else is
@@ -146,6 +149,17 @@ SEARCHABLES: Dict[str, Searchable] = {
         status_column=IntegritySignal.status,
         verification_column=None,
         owner_column=IntegritySignal.assigned_to,
+    ),
+    FIELD_MISSION: Searchable(
+        name=FIELD_MISSION,
+        model=FieldMission,
+        date_column=FieldMission.planned_start,
+        geography_column=FieldMission.geography_id,
+        thematic_column=FieldMission.thematic_area_id,
+        source_column=None,
+        status_column=FieldMission.status,
+        verification_column=None,
+        owner_column=FieldMission.lead_id,
     ),
 }
 
@@ -319,6 +333,7 @@ def requested_types(content_type: Optional[str]) -> List[str]:
 
 __all__ = [
     "EVIDENCE",
+    "FIELD_MISSION",
     "INTEGRITY_SIGNAL",
     "PROJECT",
     "QUESTION",

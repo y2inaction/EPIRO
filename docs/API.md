@@ -777,6 +777,86 @@ the worst thing on the platform to leave standing.
   published; withdraw instead.
 - `GET /integrity/{signal_id}/approvals` — the approval trail.
 
+### Field operations (`/missions`)
+
+Spec section 18. See [FIELD_OPERATIONS.md](FIELD_OPERATIONS.md), which is
+mostly about what this deliberately does not collect.
+
+#### Plan a mission
+```
+POST /missions/
+Authorization: Bearer <coordinator_token>
+{
+  "organisation_id": "uuid",
+  "title": "Borehole verification \u2014 Lemu ward",
+  "purpose": "Confirm the boreholes recorded as completed in August exist and run.",
+  "planned_start": "2026-10-01",
+  "planned_end": "2026-10-03",
+  "check_in_interval_hours": 12,
+  "risk_assessment": "The road past the bridge floods after rain...",
+  "members": [{"user_id": "uuid", "role_on_mission": "Lead enumerator"}]
+}
+
+Response: 201 Created  (status = "planned")
+```
+
+There is no position field, here or anywhere else in this router. The mission
+records the area and the window; it does not track individuals.
+
+#### Approve it
+```
+POST /missions/{mission_id}/approve
+Authorization: Bearer <a_different_coordinator_token>
+
+Response: 200 OK
+400 \u2014 no written risk assessment
+403 \u2014 the planner may not approve their own mission
+```
+
+These two refusals are what the endpoint exists for.
+
+#### Run it
+```
+POST /missions/{mission_id}/start        (team sets out; the mission is now watched)
+POST /missions/{mission_id}/check-in     {"state": "safe" | "delayed" | "assistance_required",
+                                          "note": "optional free text"}
+POST /missions/{mission_id}/complete     {"report": "What the mission found."}
+POST /missions/{mission_id}/cancel       {"reason": "Team recalled."}
+```
+
+A check-in carries a **state**, not a coordinate. `GET /missions/{id}` returns
+a derived `safety` block:
+
+```json
+{"state": "assistance_required", "last_reported_at": "...",
+ "overdue": false, "hours_since_report": 0.4, "needs_attention": true}
+```
+
+`GET /missions/?needs_attention=true` lists the missions that are overdue or
+have asked for help.
+
+#### Capture evidence in the field
+```
+POST /missions/{mission_id}/evidence
+{
+  "capture_key": "<client-generated, unique per organisation>",
+  "title": "Borehole 4 at Lemu \u2014 running",
+  "description": "Pump running, handle intact.",
+  "source_id": "uuid"
+}
+
+201 Created \u2014 first time
+200 OK      \u2014 this key was already used; here is the record it made
+409         \u2014 the mission has not started
+```
+
+**Idempotent.** A retry returns the original record unchanged, including when
+two retries arrive at once and one loses the insert race. The record starts as
+an unverified draft and goes through normal verification.
+
+- `GET /missions/{id}/evidence` \u2014 everything the mission brought back.
+- `GET /missions/{id}/check-ins` \u2014 every safety report, oldest first.
+
 ### Readiness (`/scenarios`)
 
 Spec sections 28-31. One rule governs the whole thing: **a readiness status may
@@ -915,7 +995,8 @@ Response: 200 OK
   "projects": [],
   "scenarios": [],
   "integrity_signals": [],
-  "unsearchable_types": ["documents", "stakeholders", "field_missions", "intelligence", "media", "tasks"],
+  "field_missions": [],
+  "unsearchable_types": ["documents", "stakeholders", "intelligence", "media", "tasks"],
   "total": 5
 }
 ```

@@ -60,6 +60,11 @@ INTEGRITY_ASSESSORS = frozenset({Role.INTEGRITY_ANALYST, Role.VERIFIER, Role.EVI
 # people who would have to carry out a plan are the ones who can tell whether
 # it works, so conducting a drill is open wider than declaring readiness.
 READINESS_MANAGERS = frozenset({Role.EXECUTIVE, Role.ANALYST})
+# Spec section 18. Authorising a trip is a coordination act with a duty of
+# care attached, so it sits with the same people who run programmes. Going on
+# one, checking in and capturing what you saw is the field team's own work.
+FIELD_COORDINATORS = frozenset({Role.EXECUTIVE, Role.EVIDENCE_MANAGER})
+FIELD_TEAM = frozenset({Role.FIELD_OFFICER, Role.RESEARCHER, Role.EVIDENCE_MANAGER, Role.EXECUTIVE})
 DRILL_CONDUCTORS = frozenset(
     {Role.EXECUTIVE, Role.ANALYST, Role.FIELD_OFFICER, Role.EVIDENCE_MANAGER}
 )

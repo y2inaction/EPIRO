@@ -1,6 +1,6 @@
 # Domain model
 
-24 tables. Every table is created by Alembic; `alembic check` passes with no
+27 tables. Every table is created by Alembic; `alembic check` passes with no
 drift against the models.
 
 ---
@@ -119,6 +119,28 @@ for.
 **`drill_finding`** — what a rehearsal showed to be wrong. Confirmed resolved
 by a different person from the one who raised it. Like `integrity_signal`, it
 has **no blame column**, and a test asserts that. See `docs/READINESS.md`.
+
+## 4c. Field operations
+
+```
+field_mission ──▶ mission_member
+      │
+      ├──▶ mission_check_in
+      │
+      └──◀ evidence (field_mission_id)
+```
+
+**`field_mission`** — a planned trip. Holds the area and the window, so a
+coordinator knows where to send help. It cannot be approved with an empty
+`risk_assessment`, and not by the person who planned it.
+
+**`mission_member`** — who is going. **`mission_check_in`** — a safety
+**state**, not a position. Neither table has a coordinate column, and tests
+assert that: there is nowhere to accumulate a movement trail for staff.
+
+**`evidence.capture_key`** — client-supplied, with a partial unique index over
+`(organisation_id, capture_key)` where it is not null. That index is what makes
+a retried field capture idempotent. See `docs/FIELD_OPERATIONS.md`.
 
 ## 5. Audit
 

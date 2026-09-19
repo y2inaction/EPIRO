@@ -1,6 +1,6 @@
 # EPIRO — Build Status
 
-**Last updated:** 2026-09-18 · **Branch:** `claude/beautiful-fermi-npx5r9`
+**Last updated:** 2026-09-19 · **Branch:** `claude/beautiful-fermi-npx5r9`
 
 This document exists because spec section 81 forbids presenting a planned
 feature as one that already works. Every claim below carries a label:
@@ -19,9 +19,9 @@ contradicts this file, this file is right and the other one is stale.
 
 ## At a glance
 
-- 24 database tables, one Alembic history, no schema drift (`alembic check`).
-- 128 API operations across 17 routers.
-- 351 backend tests at 89% line coverage, plus 96 frontend tests.
+- 27 database tables, one Alembic history, no schema drift (`alembic check`).
+- 140 API operations across 18 routers.
+- 387 backend tests at 90% line coverage, plus 96 frontend tests.
 - Seven CI jobs green: lint and format, type check, backend tests, frontend
   tests, Docker build, dependency audit, security scan.
 
@@ -50,7 +50,8 @@ contradicts this file, this file is right and the other one is stale.
 | 14 | Public portal | **CONFIRMED** | Unauthenticated API plus a front end: portal home, stories, the evidence register addressed by permanent reference, published answers, published corrections and search. |
 | 15 | Citizen questions | **CONFIRMED** | Public submission, triage, research, response, approval, publication, closure. |
 | 16 | Multilingual | **PARTIAL** | Content carries a language code and can be filtered by it. Translations of the same story are **not linked to each other**, and there is no translation workflow. |
-| 35 | Global search | **PARTIAL** | Full-text with ranking and all eight filters across evidence, projects, stories, questions, scenarios and integrity signals. The other content types section 35 names — documents, stakeholders, field missions, intelligence, media, tasks — have no entity yet, and the API says so in its `unsearchable_types` field. |
+| 35 | Global search | **PARTIAL** | Full-text with ranking and all eight filters across evidence, projects, stories, questions, scenarios, integrity signals and field missions. The other content types section 35 names — documents, stakeholders, intelligence, media, tasks — have no entity yet, and the API says so in its `unsearchable_types` field. |
+| 18 | Field operations and missions | **PARTIAL** | A mission is planned, approved **only once a risk assessment is written** and **never by its own planner**, started, checked in on, and completed with a report. Evidence captured on it is linked to it, starts as an unverified draft, and is **idempotent on a client-supplied capture key** — a retry returns the original record, and a concurrent retry that loses the insert race does too. Safety is a **state**, not a position: a check-in has no coordinate column and neither does the team table, so there is nowhere to accumulate a movement trail for staff. Overdue is derived from the check-in trail, never stored. **Not built:** offline capture and sync (§17 — the capture key is groundwork, not the feature), a front end, and any alerting, which matters most here because the mission nobody is looking at is a team that has not reported in. See [FIELD_OPERATIONS.md](FIELD_OPERATIONS.md). |
 | 25–26 | Information integrity | **PARTIAL** | A claim circulating in public is logged, assessed with a finding **and** its reasoning, approved by someone other than the assessor, answered publicly by someone other than the approver, and withdrawn rather than deleted. A determination cannot be approved unless it cites evidence the organisation has itself approved; `unresolved` is the one exempt finding, because it asserts nothing to source. Published corrections are on the portal with their reasoning and evidence citation. **Not built:** public submission of a signal, staged review, a staff screen (the workflow is API-only), and any automated detection — nothing scans or scores anything. See [INFORMATION_INTEGRITY.md](INFORMATION_INTEGRITY.md). |
 | 28–31 | Readiness and scenarios | **PARTIAL** | A scenario carries an ordered playbook whose every step names a responsible role, rehearsals that record what they found, and findings a **different person** confirms resolved. The readiness colour is declared with a rationale and checked against a floor computed from the record — no playbook caps it at RED, never or long-ago rehearsed caps it at AMBER, an open critical finding caps it at AMBER — and **nobody, including a platform administrator, may declare better than the floor**. A scenario starts RED, and completing a drill never improves the declared status by itself. **Not built:** a front end, notifications when a drill falls out of date, any organisation-level rollup, and public exposure — readiness is deliberately internal. See [READINESS.md](READINESS.md). |
 | 36 | Approval engine | **PARTIAL** | Approvals are recorded with reviewer, timestamp, decision, comments and the version reviewed, across evidence, stories and questions. An organisation defines its own **review stages** for evidence, and each cleared stage is named on the trail. Two limits: the coarse lifecycle is deliberately fixed so an organisation cannot redefine what "published" means to the public, and staged review is wired into **evidence only** — stories and questions keep the single implicit stage. |
@@ -63,7 +64,6 @@ visible rather than implied by absence.
 | § | Capability | Status |
 |---|---|---|
 | 17 | Offline / grassroots toolkit | **NOT BUILT** |
-| 18 | Field operations and missions | **NOT BUILT** |
 | 19 | Rapid response engine | **NOT BUILT** |
 | 20 | National listening network | **NOT BUILT** |
 | 21 | Intelligence workspace | **NOT BUILT** |
@@ -105,7 +105,8 @@ it and every authenticated call happens on the server.
 exist in the API), the integrity workflow as a staff screen (the API is
 complete and exercised end to end; only the public side has a front end), the
 readiness matrix as a screen (API-only, and deliberately not public at all),
-project and programme management, user administration, and any dashboard.
+field missions as a screen, project and programme management, user
+administration, and any dashboard.
 
 ---
 
@@ -139,6 +140,14 @@ The same applies inward. A readiness drill (§28–31) is the obvious place a
 "who let us down" column would appear, so `drill_finding` has none, and a test
 asserts that. A finding describes what the response could not do. Section 4's
 prohibition on profiling is not only about citizens.
+
+Field operations (§18) is where it applies to staff. A mission records where a
+team is going and when, because a coordinator has to know where to send help.
+It does **not** record a position per person: `mission_check_in` and
+`mission_member` have no coordinate column, and tests assert that. A check-in
+is a state — safe, delayed, assistance required — not a track. Section 20's
+limit on collection is written about citizens; staff did not stop being people
+by being employed.
 
 ---
 
