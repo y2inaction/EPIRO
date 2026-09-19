@@ -1,0 +1,59 @@
+# Runtime dependencies only. Development and test tooling lives in
+# requirements-dev.txt so it is neither installed into the production image
+# nor scanned as part of the deployed dependency set.
+#
+# Versions here were raised together during the Phase 1 dependency audit and
+# verified as a set: the full test suite, type check and migration round trip
+# all pass against exactly these pins.
+
+# FastAPI and Async
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+python-multipart==0.0.32
+
+# Database
+sqlalchemy==2.0.54
+alembic==1.20.0
+psycopg2-binary==2.9.13
+geoalchemy2==0.20.0
+
+# ORM and Validation
+pydantic==2.13.5
+pydantic-settings==2.15.0
+email-validator==2.3.0
+
+# Authentication & Security
+passlib[bcrypt]==1.7.4
+# passlib 1.7.4 probes bcrypt via a >72-byte test hash. bcrypt >= 4.1 removed
+# __about__ and bcrypt 5.x raises on over-length input instead of truncating,
+# so that probe throws and every hash_password call fails. Pin until passlib
+# is replaced.
+bcrypt==4.0.1
+PyJWT==2.14.0
+
+# Rate limiting
+slowapi==0.1.9
+
+# Background Jobs
+celery==5.6.3
+redis==8.1.0
+
+# Logging
+python-json-logger==4.2.0
+
+# Deliberately absent, having been removed as unused during the Phase 1
+# rebuild. Each carried published advisories while no code imported it; they
+# should be reinstated, at a current version, by the phase that needs them:
+#
+#   python-jose      second JWT library; only PyJWT is used. Carried both
+#                    critical advisories, and pulled in ecdsa, whose timing
+#                    advisories have no fix
+#   Pillow           image processing, not yet built
+#   PyPDF2           deprecated and unmaintained; use pypdf when document
+#                    processing lands
+#   python-docx      document processing, not yet built
+#   python-pptx      document processing, not yet built
+#   openpyxl         spreadsheet handling, not yet built
+#   pgvector         no vector column exists yet
+#   prometheus-client no metrics endpoint is exposed yet
+#   aiofiles, arrow, python-slugify, python-dateutil   never imported

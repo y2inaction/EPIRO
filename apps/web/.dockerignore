@@ -1,0 +1,22 @@
+# Keep the build context small and free of secrets. node_modules in
+# particular must be installed inside the image, not copied from the host.
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output
+node_modules/
+.next/
+out/
+coverage/
+
+# Generated TypeScript artefacts
+*.tsbuildinfo
+next-env.d.ts
+
+# VCS and docs
+.git/
+.gitignore
+*.md

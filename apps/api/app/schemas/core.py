@@ -1,0 +1,1419 @@
+"""Core entity schemas."""
+
+import uuid
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+
+from app.models.core import (
+    ActionOrigin,
+    ActionStatus,
+    ApprovalDecision,
+    DrillStatus,
+    EvidenceStatus,
+    FindingSeverity,
+    GeographyLevel,
+    IntegrityFinding,
+    IntegritySignalPriority,
+    IntegritySignalStatus,
+    MilestoneStatus,
+    MissionStatus,
+    ProjectStatus,
+    QuestionStatus,
+    ReadinessStatus,
+    Role,
+    SafetyState,
+    SourceReliability,
+    SourceType,
+    StoryStatus,
+    VerificationState,
+)
+
+
+class OrganisationBase(BaseModel):
+    """Base organisation schema."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    code: str = Field(..., min_length=1, max_length=50)
+    description: Optional[str] = None
+    country: str = "NG"
+    timezone: str = "Africa/Lagos"
+    website: Optional[str] = None
+
+
+class OrganisationCreate(OrganisationBase):
+    """Organisation creation schema."""
+
+
+class OrganisationUpdate(BaseModel):
+    """Organisation update schema.
+
+    Deliberately narrow: identity fields such as code are not client-editable.
+    """
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    country: Optional[str] = Field(None, min_length=2, max_length=2)
+    timezone: Optional[str] = Field(None, max_length=50)
+    website: Optional[str] = Field(None, max_length=500)
+    logo_url: Optional[str] = Field(None, max_length=500)
+    is_active: Optional[bool] = None
+
+
+class OrganisationResponse(OrganisationBase):
+    """Organisation response schema."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ThematicAreaBase(BaseModel):
+    """Base thematic area schema."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    code: str = Field(..., min_length=1, max_length=50)
+    description: Optional[str] = None
+    icon: Optional[str] = Field(None, max_length=50)
+    color: Optional[str] = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    order: int = Field(0, ge=0)
+
+
+class ThematicAreaCreate(ThematicAreaBase):
+    """Thematic area creation schema.
+
+    The eight streams in spec section 9 are seeded, not hard-coded, so an
+    administrator can add more.
+    """
+
+
+class ThematicAreaUpdate(BaseModel):
+    """Thematic area update schema.
+
+    Code is absent: it is the stable identifier existing records were filed
+    under, so changing it would silently reinterpret them.
+    """
+
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    icon: Optional[str] = Field(None, max_length=50)
+    color: Optional[str] = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    order: Optional[int] = Field(None, ge=0)
+    is_active: Optional[bool] = None
+
+
+class ThematicAreaResponse(ThematicAreaBase):
+    """Thematic area response schema."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class GeographyBase(BaseModel):
+    """Base geography schema."""
+
+    name: str = Field(..., min_length=1, max_length=160)
+    level: GeographyLevel
+    code: Optional[str] = Field(None, max_length=32)
+
+
+class GeographyCreate(GeographyBase):
+    """Geography creation schema."""
+
+    parent_id: Optional[uuid.UUID] = None
+    latitude: Optional[Decimal] = Field(None, ge=-90, le=90)
+    longitude: Optional[Decimal] = Field(None, ge=-180, le=180)
+
+
+class GeographyUpdate(BaseModel):
+    """Geography update schema.
+
+    Level and parent are absent: moving a node between tiers would silently
+    reinterpret every project and evidence record beneath it.
+    """
+
+    name: Optional[str] = Field(None, min_length=1, max_length=160)
+    code: Optional[str] = Field(None, max_length=32)
+    latitude: Optional[Decimal] = Field(None, ge=-90, le=90)
+    longitude: Optional[Decimal] = Field(None, ge=-180, le=180)
+    is_active: Optional[bool] = None
+
+
+class GeographyResponse(GeographyBase):
+    """Geography response schema."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    parent_id: Optional[uuid.UUID] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProgrammeBase(BaseModel):
+    """Base programme schema."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    code: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    budget: Optional[Decimal] = None
+    budget_currency: Optional[str] = Field(None, min_length=3, max_length=3)
+
+
+class ProgrammeCreate(ProgrammeBase):
+    """Programme creation schema."""
+
+    organisation_id: uuid.UUID
+
+
+class ProgrammeUpdate(BaseModel):
+    """Programme update schema.
+
+    Code is absent: it is the identifier projects are filed under within an
+    organisation.
+    """
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    budget: Optional[Decimal] = None
+    budget_currency: Optional[str] = Field(None, min_length=3, max_length=3)
+    status: Optional[str] = Field(None, max_length=50)
+
+
+class ProgrammeResponse(ProgrammeBase):
+    """Programme response schema."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectBase(BaseModel):
+    """Base project schema."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    code: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    actual_completion: Optional[date] = None
+    budget: Optional[Decimal] = None
+    budget_currency: Optional[str] = Field(None, min_length=3, max_length=3)
+    geography_id: Optional[uuid.UUID] = None
+    implementing_org: Optional[str] = Field(None, max_length=255)
+    funding_source: Optional[str] = Field(None, max_length=255)
+    sector: Optional[str] = Field(None, max_length=100)
+    target_beneficiaries: Optional[int] = Field(None, ge=0)
+
+
+class ProjectCreate(ProjectBase):
+    """Project creation schema."""
+
+    organisation_id: uuid.UUID
+    programme_id: Optional[uuid.UUID] = None
+
+
+class ProjectUpdate(BaseModel):
+    """Project update schema.
+
+    Status is absent: it moves through the dedicated status endpoint, which
+    enforces the completion rules.
+    """
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    programme_id: Optional[uuid.UUID] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    actual_completion: Optional[date] = None
+    budget: Optional[Decimal] = None
+    budget_currency: Optional[str] = Field(None, min_length=3, max_length=3)
+    geography_id: Optional[uuid.UUID] = None
+    implementing_org: Optional[str] = Field(None, max_length=255)
+    funding_source: Optional[str] = Field(None, max_length=255)
+    sector: Optional[str] = Field(None, max_length=100)
+    target_beneficiaries: Optional[int] = Field(None, ge=0)
+
+
+class ProjectStatusChange(BaseModel):
+    """Request to move a project to a new lifecycle state."""
+
+    status: ProjectStatus
+    actual_completion: Optional[date] = None
+    note: Optional[str] = Field(None, max_length=1000)
+
+
+class ProjectResponse(ProjectBase):
+    """Project response schema."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    programme_id: Optional[uuid.UUID] = None
+    status: ProjectStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class MilestoneBase(BaseModel):
+    """Base milestone schema."""
+
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    due_date: Optional[date] = None
+    sequence: int = Field(0, ge=0)
+
+
+class MilestoneCreate(MilestoneBase):
+    """Milestone creation schema."""
+
+
+class MilestoneUpdate(BaseModel):
+    """Milestone update schema."""
+
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    due_date: Optional[date] = None
+    completed_date: Optional[date] = None
+    status: Optional[MilestoneStatus] = None
+    sequence: Optional[int] = Field(None, ge=0)
+
+
+class MilestoneResponse(MilestoneBase):
+    """Milestone response schema."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    completed_date: Optional[date] = None
+    status: MilestoneStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class IndicatorBase(BaseModel):
+    """Base indicator schema."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    unit: Optional[str] = Field(None, max_length=50)
+    baseline_value: Optional[Decimal] = None
+    baseline_date: Optional[date] = None
+    target_value: Optional[Decimal] = None
+    target_date: Optional[date] = None
+
+
+class IndicatorCreate(IndicatorBase):
+    """Indicator creation schema."""
+
+    organisation_id: uuid.UUID
+    project_id: Optional[uuid.UUID] = None
+
+
+class IndicatorUpdate(BaseModel):
+    """Indicator update schema.
+
+    current_value is absent: it is derived from approved evidence rather than
+    set by hand, so that a reported figure always traces to a record.
+    """
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    unit: Optional[str] = Field(None, max_length=50)
+    baseline_value: Optional[Decimal] = None
+    baseline_date: Optional[date] = None
+    target_value: Optional[Decimal] = None
+    target_date: Optional[date] = None
+
+
+class IndicatorResponse(IndicatorBase):
+    """Indicator response schema."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    project_id: Optional[uuid.UUID] = None
+    current_value: Optional[Decimal] = None
+    current_value_date: Optional[date] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SourceBase(BaseModel):
+    """Base source schema."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    source_type: SourceType
+    url: Optional[str] = Field(None, max_length=500)
+    description: Optional[str] = None
+    publisher: Optional[str] = Field(None, max_length=255)
+    author: Optional[str] = Field(None, max_length=255)
+    publication_date: Optional[date] = None
+    document_url: Optional[str] = Field(None, max_length=500)
+    document_hash: Optional[str] = Field(None, max_length=128)
+    provenance: Optional[str] = None
+
+
+class SourceCreate(SourceBase):
+    """Source creation schema."""
+
+    organisation_id: uuid.UUID
+
+
+class SourceUpdate(BaseModel):
+    """Source update schema.
+
+    Verification state and reliability are absent: both are review outcomes
+    and move through the dedicated review endpoint, which records who decided
+    and why.
+    """
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    source_type: Optional[SourceType] = None
+    url: Optional[str] = Field(None, max_length=500)
+    description: Optional[str] = None
+    publisher: Optional[str] = Field(None, max_length=255)
+    author: Optional[str] = Field(None, max_length=255)
+    publication_date: Optional[date] = None
+    document_url: Optional[str] = Field(None, max_length=500)
+    document_hash: Optional[str] = Field(None, max_length=128)
+    provenance: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class SourceReview(BaseModel):
+    """Record the outcome of reviewing a source."""
+
+    verification_state: VerificationState
+    reliability: SourceReliability = SourceReliability.UNKNOWN
+    # Required so a classification is never an unexplained judgement.
+    rationale: str = Field(..., min_length=1)
+    next_review_date: Optional[date] = None
+
+
+class SourceResponse(SourceBase):
+    """Source response schema."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    verification_state: VerificationState
+    reliability: SourceReliability
+    reliability_rationale: Optional[str] = None
+    reviewed_by: Optional[uuid.UUID] = None
+    review_date: Optional[date] = None
+    next_review_date: Optional[date] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class EvidenceBase(BaseModel):
+    """Base evidence schema."""
+
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    evidence_date: Optional[date] = None
+    beneficiaries: Optional[int] = None
+    outcome: Optional[str] = None
+    confidence_level: Optional[int] = Field(50, ge=0, le=100)
+
+
+class EvidenceCreate(EvidenceBase):
+    """Evidence creation schema."""
+
+    organisation_id: uuid.UUID
+    source_id: uuid.UUID
+    project_id: Optional[uuid.UUID] = None
+    location_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    indicator_id: Optional[uuid.UUID] = None
+    measured_value: Optional[Decimal] = None
+
+
+class EvidenceUpdate(BaseModel):
+    """Evidence update schema.
+
+    Workflow state (status, verification_status, approval_status, verified_by,
+    approved_by) is intentionally absent: those transitions are owned by the
+    dedicated verify, approve and publish endpoints and must not be settable
+    through a general update.
+    """
+
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    evidence_date: Optional[date] = None
+    beneficiaries: Optional[int] = None
+    outcome: Optional[str] = None
+    confidence_level: Optional[int] = Field(None, ge=0, le=100)
+    project_id: Optional[uuid.UUID] = None
+    location_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    indicator_id: Optional[uuid.UUID] = None
+    measured_value: Optional[Decimal] = None
+    document_url: Optional[str] = Field(None, max_length=500)
+    tags: Optional[List[str]] = None
+    metadata_json: Optional[dict[str, Any]] = None
+
+
+class EvidenceResponse(EvidenceBase):
+    """Evidence response schema."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    # Permanent citable identifier, assigned once at creation.
+    reference: str
+    organisation_id: uuid.UUID
+    source_id: uuid.UUID
+    project_id: Optional[uuid.UUID] = None
+    location_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    indicator_id: Optional[uuid.UUID] = None
+    measured_value: Optional[Decimal] = None
+    status: EvidenceStatus
+    verification_status: str
+    approval_status: str
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class StoryBase(BaseModel):
+    """Base story schema."""
+
+    title: str = Field(..., min_length=1, max_length=255)
+    headline: Optional[str] = None
+    body: str = Field(..., min_length=1)
+    summary: Optional[str] = None
+    language: str = "en"
+
+
+class StoryCreate(StoryBase):
+    """Story creation schema.
+
+    Tenancy is derived server-side from the linked evidence rather than
+    accepted from the client.
+    """
+
+    evidence_id: uuid.UUID
+
+
+class StoryUpdate(BaseModel):
+    """Story update schema.
+
+    Publication state (status, featured, approved_by, published_date) is owned
+    by the publish and feature endpoints.
+    """
+
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    headline: Optional[str] = Field(None, max_length=500)
+    body: Optional[str] = Field(None, min_length=1)
+    summary: Optional[str] = None
+    language: Optional[str] = Field(None, max_length=5)
+
+
+class StoryResponse(StoryBase):
+    """Story response schema."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    evidence_id: uuid.UUID
+    status: StoryStatus
+    featured: bool
+    published_date: Optional[datetime] = None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class QuestionBase(BaseModel):
+    """Base question schema."""
+
+    category: Optional[str] = None
+    question_text: str = Field(..., min_length=1)
+    location_state: Optional[str] = None
+    location_lga: Optional[str] = None
+    language: str = "en"
+    is_anonymous: bool = True
+
+
+class QuestionCreate(QuestionBase):
+    """Question creation schema.
+
+    A submitter address is only accepted alongside is_anonymous=false. Storing
+    a contact detail on a record that describes itself as anonymous would be a
+    false statement to the person who submitted it, and spec section 20 limits
+    collection to what an operational purpose requires.
+    """
+
+    organisation_id: Optional[uuid.UUID] = None
+    submitter_email: Optional[EmailStr] = None
+
+    @model_validator(mode="after")
+    def _anonymous_submissions_carry_no_address(self) -> "QuestionCreate":
+        if self.is_anonymous and self.submitter_email is not None:
+            raise ValueError(
+                "An anonymous question cannot carry a submitter address. "
+                "Set is_anonymous to false to be contacted about it."
+            )
+        return self
+
+
+class QuestionTriage(BaseModel):
+    """Assigning a publicly submitted question to the body that will answer it.
+
+    Until this happens a question belongs to no organisation, so there is no
+    tenant against which to check a role and nothing can act on it.
+    """
+
+    organisation_id: uuid.UUID
+    geography_id: Optional[uuid.UUID] = None
+    category: Optional[str] = Field(None, max_length=100)
+    assigned_to: Optional[uuid.UUID] = None
+
+
+class QuestionResponseDraft(BaseModel):
+    """A drafted answer.
+
+    Carried in the body rather than the query string: an answer in a URL is
+    written to every access log and proxy along the way, and truncated by the
+    first one with a length limit.
+    """
+
+    response: str = Field(..., min_length=1, max_length=20000)
+
+
+class QuestionUpdate(BaseModel):
+    """Question update schema.
+
+    Workflow state (status, response, approved_by, is_published) is owned by the
+    respond, approve, publish and close endpoints.
+    """
+
+    category: Optional[str] = Field(None, max_length=100)
+    location_state: Optional[str] = Field(None, max_length=50)
+    location_lga: Optional[str] = Field(None, max_length=100)
+    geography_id: Optional[uuid.UUID] = None
+    assigned_to: Optional[uuid.UUID] = None
+
+
+class QuestionResponse(QuestionBase):
+    """Question response schema.
+
+    Carries organisation_id because roles are held per organisation: a client
+    cannot tell which actions to offer on a question without knowing which body
+    it was triaged to. It is not a disclosure — a caller only ever sees
+    questions in organisations they already belong to, or ones nobody has
+    claimed at all.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: Optional[uuid.UUID] = None
+    status: QuestionStatus
+    response: Optional[str] = None
+    response_date: Optional[datetime] = None
+    is_published: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class IntegritySignalBase(BaseModel):
+    """A claim circulating in public, described as information.
+
+    Every field here is about the claim or the channel carrying it. There is
+    deliberately no field naming a person who spread it: spec section 4 forbids
+    profiling citizens, and a schema that accepted such a field would be the
+    first place the prohibition leaked.
+    """
+
+    claim: str = Field(..., min_length=1, max_length=5000)
+    source: Optional[str] = Field(
+        None,
+        max_length=255,
+        description="The channel it was observed on, not the person who posted it",
+    )
+    circulation: Optional[str] = Field(
+        None,
+        max_length=5000,
+        description="How and where it is spreading, described as channels",
+    )
+    first_observed: Optional[date] = None
+    language: str = Field("en", max_length=5)
+    geography_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+
+
+class IntegritySignalCreate(IntegritySignalBase):
+    """Log a claim that needs looking at."""
+
+    organisation_id: uuid.UUID
+    priority: IntegritySignalPriority = IntegritySignalPriority.LOW_RISK
+    assigned_to: Optional[uuid.UUID] = None
+
+
+class IntegritySignalUpdate(BaseModel):
+    """Revise the description of a signal.
+
+    Editing what the claim says invalidates any assessment of it, because the
+    assessment answered the old wording. The API raises the version and sends
+    the record back accordingly.
+    """
+
+    claim: Optional[str] = Field(None, min_length=1, max_length=5000)
+    source: Optional[str] = Field(None, max_length=255)
+    circulation: Optional[str] = Field(None, max_length=5000)
+    first_observed: Optional[date] = None
+    language: Optional[str] = Field(None, max_length=5)
+    geography_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    priority: Optional[IntegritySignalPriority] = None
+    assigned_to: Optional[uuid.UUID] = None
+
+
+class IntegrityAssessment(BaseModel):
+    """What was found out about a claim, and why.
+
+    Both fields are required together. A finding with no reasoning is an
+    unexplainable verdict, which spec section 4 rules out; reasoning with no
+    finding leaves the record unable to say what it concluded.
+    """
+
+    finding: IntegrityFinding
+    assessment: str = Field(..., min_length=1, max_length=20000)
+    impact: Optional[str] = Field(None, max_length=20000)
+    evidence_id: Optional[uuid.UUID] = Field(
+        None,
+        description="The evidence record the finding rests on",
+    )
+
+
+class IntegrityResponseDraft(BaseModel):
+    """The correction the body intends to put out."""
+
+    response: str = Field(..., min_length=1, max_length=20000)
+
+
+class IntegritySignalResponse(IntegritySignalBase):
+    """An integrity signal as the workspace sees it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    priority: IntegritySignalPriority
+    status: IntegritySignalStatus
+    assigned_to: Optional[uuid.UUID] = None
+    finding: Optional[IntegrityFinding] = None
+    assessment: Optional[str] = None
+    impact: Optional[str] = None
+    evidence_id: Optional[uuid.UUID] = None
+    assessed_by: Optional[uuid.UUID] = None
+    assessed_at: Optional[datetime] = None
+    response: Optional[str] = None
+    approved_by: Optional[uuid.UUID] = None
+    approved_at: Optional[datetime] = None
+    published_at: Optional[datetime] = None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class FigureBasis(BaseModel):
+    """What a figure counted, as the query that reproduces it.
+
+    Returned with every number the intelligence layer serves. Spec section 4
+    requires intelligence to be explainable and source-linked; a figure whose
+    basis can be handed straight to ``/intelligence/records`` is explainable in
+    the only way that can be checked.
+    """
+
+    measure: str
+    dimension: Optional[str] = None
+    value: Optional[str] = None
+
+    # The filters are part of the basis, not separate from it. A figure
+    # narrowed by something its basis did not carry would not reconcile with
+    # its own drill-down: the number counted one set of records and the link
+    # would open another.
+    organisation_id: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    verification_status: Optional[str] = None
+    status: Optional[str] = None
+    since: Optional[date] = None
+    until: Optional[date] = None
+
+
+class FigureResponse(BaseModel):
+    """One number, and how to see the records behind it."""
+
+    label: str
+    # Null when suppressed. A zero is a real zero — "nobody asked" and "too few
+    # asked to say" are different facts and must not render the same.
+    value: Optional[int] = None
+    suppressed: bool = False
+    basis: FigureBasis
+
+
+class IntelligenceOverview(BaseModel):
+    """The headline figures, with the rule that shaped them stated."""
+
+    figures: List[FigureResponse]
+    minimum_cell_size: int
+    # Named in the response rather than only in documentation, so a client
+    # rendering a suppressed cell can explain why rather than showing a blank.
+    suppression_note: str
+    # Measures left out because a filter was applied that they cannot honour.
+    # Named rather than silently missing: a figure absent from a list is
+    # indistinguishable from a figure that counted nothing, and the two mean
+    # opposite things.
+    excluded_measures: List[str] = []
+
+
+class FieldChange(BaseModel):
+    """One field that moved, and where it moved from and to.
+
+    ``had_previous`` is false where the trail recorded only what the field
+    became. "The previous value was empty" and "the previous value was not
+    written down" are different facts, and a client that renders them the same
+    puts an assertion in the trail's mouth that the trail never made.
+    """
+
+    field: str
+    from_: Optional[Any] = Field(None, alias="from")
+    to: Optional[Any] = None
+    had_previous: bool = True
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ChangeEntry(BaseModel):
+    """One recorded change: what, when, to which record, and by whom.
+
+    ``actor`` names a person, and that is accountability rather than
+    monitoring: spec section 39 requires every state transition to be
+    answerable for, and a trail that cannot say who acted does not do that.
+    The line this layer holds is that the same fact is never offered as a
+    filter or a grouping — see the intelligence API module docstring.
+    """
+
+    id: uuid.UUID
+    action: str
+    at: datetime
+    entity_type: str
+    entity_id: Optional[uuid.UUID] = None
+    entity_label: Optional[str] = None
+    actor: Optional[str] = None
+    # The evidence the change rests on, where the change cited any.
+    evidence_id: Optional[uuid.UUID] = None
+    changed: List[FieldChange] = []
+
+
+class ChangeFeed(BaseModel):
+    """What changed about a measure's records, and what kinds of change."""
+
+    measure: str
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    basis: Dict[str, Any]
+    by_action: List[FigureResponse]
+    data: List[ChangeEntry]
+    # Said in the response because it is the one place the date range means
+    # something different from everywhere else on this dashboard.
+    date_note: str
+
+
+class BreakdownResponse(BaseModel):
+    """A measure counted by one of its dimensions."""
+
+    measure: str
+    dimension: str
+    figures: List[FigureResponse]
+    minimum_cell_size: int
+    suppressed_buckets: int
+
+
+class MissionMemberInput(BaseModel):
+    """Somebody going on a mission."""
+
+    user_id: uuid.UUID
+    role_on_mission: Optional[str] = Field(None, max_length=100)
+
+
+class MissionMemberResponse(MissionMemberInput):
+    """A stored mission member."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+
+
+class FieldMissionBase(BaseModel):
+    """A planned trip to gather evidence.
+
+    Carries the area the team is covering and the window it runs in. There is
+    deliberately no per-person position field, here or anywhere else: see the
+    FieldMission model docstring.
+    """
+
+    title: str = Field(..., min_length=1, max_length=255)
+    purpose: str = Field(..., min_length=1, max_length=10000)
+    planned_start: date
+    planned_end: date
+    geography_id: Optional[uuid.UUID] = None
+    project_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    lead_id: Optional[uuid.UUID] = None
+    check_in_interval_hours: Optional[int] = Field(None, ge=1, le=168)
+
+
+class FieldMissionCreate(FieldMissionBase):
+    """Plan a mission.
+
+    The risk assessment may be written here or added before approval, but a
+    mission cannot be approved without one.
+    """
+
+    organisation_id: uuid.UUID
+    risk_assessment: Optional[str] = Field(None, max_length=20000)
+    members: List[MissionMemberInput] = Field(default_factory=list)
+
+
+class FieldMissionUpdate(BaseModel):
+    """Revise a mission that has not yet been approved."""
+
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    purpose: Optional[str] = Field(None, min_length=1, max_length=10000)
+    planned_start: Optional[date] = None
+    planned_end: Optional[date] = None
+    geography_id: Optional[uuid.UUID] = None
+    project_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    lead_id: Optional[uuid.UUID] = None
+    risk_assessment: Optional[str] = Field(None, max_length=20000)
+    check_in_interval_hours: Optional[int] = Field(None, ge=1, le=168)
+
+
+class MissionCompletion(BaseModel):
+    """What the mission found.
+
+    The report is required. A mission with no account of it is a trip, and the
+    point of recording one is what came back.
+    """
+
+    report: str = Field(..., min_length=1, max_length=50000)
+
+
+class MissionCancellation(BaseModel):
+    """Why a planned mission is not going ahead."""
+
+    reason: str = Field(..., min_length=1, max_length=2000)
+
+
+class CheckInInput(BaseModel):
+    """A team reporting on its own safety.
+
+    There is no position field. The note is free text a team may use to say
+    where it is if it chooses; the platform does not require or store a
+    coordinate, because a coordinator needs to know whether people are safe
+    rather than where each of them has been.
+    """
+
+    state: SafetyState = SafetyState.SAFE
+    note: Optional[str] = Field(None, max_length=2000)
+
+
+class CheckInResponse(BaseModel):
+    """A stored check-in."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    mission_id: uuid.UUID
+    state: SafetyState
+    reported_at: datetime
+    reported_by: Optional[uuid.UUID] = None
+    note: Optional[str] = None
+
+
+class SafetyPostureResponse(BaseModel):
+    """How a mission is doing right now, derived from its check-ins."""
+
+    state: SafetyState
+    last_reported_at: Optional[datetime] = None
+    overdue: bool
+    hours_since_report: Optional[float] = None
+    needs_attention: bool
+
+
+class FieldMissionResponse(FieldMissionBase):
+    """A mission, its team and its current safety posture."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    status: MissionStatus
+    risk_assessment: Optional[str] = None
+    approved_by: Optional[uuid.UUID] = None
+    approved_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    report: Optional[str] = None
+    cancellation_reason: Optional[str] = None
+    members: List[MissionMemberResponse] = []
+    safety: Optional[SafetyPostureResponse] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class FieldCapture(BaseModel):
+    """An observation gathered on a mission.
+
+    ``capture_key`` is supplied by the capturing client and makes a retry
+    idempotent: a device on a bad connection that sends the same capture twice
+    gets the same record back, not two. It is unique per organisation.
+
+    Spec section 17's offline toolkit is not built. This is the part of it that
+    could not be added afterwards without rewriting what came before.
+    """
+
+    capture_key: str = Field(..., min_length=8, max_length=128)
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=20000)
+    source_id: uuid.UUID
+    evidence_date: Optional[date] = None
+    geography_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    outcome: Optional[str] = Field(None, max_length=20000)
+    beneficiaries: Optional[int] = Field(None, ge=0)
+    document_url: Optional[str] = Field(None, max_length=500)
+    image_urls: List[str] = Field(default_factory=list)
+
+
+class PlaybookStepInput(BaseModel):
+    """One step of a response plan.
+
+    ``responsible_role`` is required: a plan that does not say who acts is not
+    a plan, and there is no sensible default for whose job something is.
+    """
+
+    position: int = Field(..., ge=1)
+    title: str = Field(..., min_length=1, max_length=255)
+    action: str = Field(..., min_length=1, max_length=10000)
+    responsible_role: Role
+    within_hours: Optional[int] = Field(None, ge=0, le=8760)
+
+
+class PlaybookStepResponse(PlaybookStepInput):
+    """A stored playbook step."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+
+
+class PlaybookInput(BaseModel):
+    """A complete response plan, replacing whatever was there before.
+
+    Sent whole rather than step by step, because the steps are ordered and a
+    per-step edit would leave the ordering briefly meaningless.
+    """
+
+    steps: List[PlaybookStepInput] = Field(..., min_length=1)
+
+
+class DrillSchedule(BaseModel):
+    """A commitment to rehearse a scenario on a date."""
+
+    scheduled_for: date
+
+
+class DrillFindingInput(BaseModel):
+    """Something a rehearsal showed to be wrong.
+
+    Describes what the response could not do. Spec section 4 forbids profiling
+    people, and a drill is a place where "who let us down" would be the
+    tempting field; there is deliberately none.
+    """
+
+    description: str = Field(..., min_length=1, max_length=10000)
+    severity: FindingSeverity = FindingSeverity.OBSERVATION
+
+
+class DrillCompletion(BaseModel):
+    """What happened when the scenario was rehearsed.
+
+    The summary is required. A completed drill with no account of it is a date,
+    and a date is what the previous design mistook for readiness.
+    """
+
+    summary: str = Field(..., min_length=1, max_length=20000)
+    findings: List[DrillFindingInput] = Field(default_factory=list)
+
+
+class DrillCancellation(BaseModel):
+    """Why a planned rehearsal did not happen."""
+
+    reason: str = Field(..., min_length=1, max_length=2000)
+
+
+class FindingResolution(BaseModel):
+    """How a gap a rehearsal found was closed."""
+
+    resolution: str = Field(..., min_length=1, max_length=10000)
+
+
+class DrillFindingResponse(BaseModel):
+    """A stored drill finding."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    drill_id: uuid.UUID
+    description: str
+    severity: FindingSeverity
+    raised_by: Optional[uuid.UUID] = None
+    resolved_at: Optional[datetime] = None
+    resolved_by: Optional[uuid.UUID] = None
+    resolution: Optional[str] = None
+    created_at: datetime
+
+
+class DrillResponse(BaseModel):
+    """A scheduled or completed rehearsal."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    scenario_id: uuid.UUID
+    scheduled_for: date
+    status: DrillStatus
+    completed_at: Optional[datetime] = None
+    conducted_by: Optional[uuid.UUID] = None
+    summary: Optional[str] = None
+    cancellation_reason: Optional[str] = None
+    findings: List[DrillFindingResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReadinessDeclaration(BaseModel):
+    """A statement of how ready the organisation is, and why.
+
+    The rationale is required. A readiness colour with no stated reason is a
+    number on a dashboard that nobody can be held to, and the whole point of
+    recording it here is that somebody can.
+    """
+
+    status: ReadinessStatus
+    rationale: str = Field(..., min_length=1, max_length=5000)
+
+
+class ReadinessFloor(BaseModel):
+    """The best status a scenario's record supports, and why not better."""
+
+    status: ReadinessStatus
+    reasons: List[str]
+
+
+class ScenarioBase(BaseModel):
+    """Base scenario schema."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    category: Optional[str] = None
+    description: Optional[str] = None
+    trigger: Optional[str] = None
+
+
+class ScenarioCreate(ScenarioBase):
+    """Register something the organisation must be ready for.
+
+    There is no status field. A new scenario starts at the worst honest answer
+    and is declared upwards once there is a record to support it; letting a
+    creator set GREEN on an empty record is the hole the whole feature exists
+    to close.
+    """
+
+    organisation_id: uuid.UUID
+    owner: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    playbook_url: Optional[str] = Field(None, max_length=500)
+    drill_interval_days: Optional[int] = Field(None, ge=1, le=3650)
+
+
+class ScenarioUpdate(BaseModel):
+    """Revise a scenario's description or cadence."""
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    category: Optional[str] = None
+    description: Optional[str] = None
+    trigger: Optional[str] = None
+    owner: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    playbook_url: Optional[str] = Field(None, max_length=500)
+    drill_interval_days: Optional[int] = Field(None, ge=1, le=3650)
+
+
+class ScenarioResponse(ScenarioBase):
+    """A scenario, its declared readiness, and the floor beneath it.
+
+    ``floor`` is served alongside ``status`` so that a reader can see not only
+    what was declared but what the record actually supports. A declared status
+    equal to its floor is as good as the evidence allows; one worse than the
+    floor is somebody exercising judgement, which they are entitled to do.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: Optional[uuid.UUID] = None
+    status: ReadinessStatus
+    status_rationale: Optional[str] = None
+    status_declared_by: Optional[uuid.UUID] = None
+    status_declared_at: Optional[datetime] = None
+    owner: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    playbook_url: Optional[str] = None
+    drill_interval_days: Optional[int] = None
+    last_drill_date: Optional[date] = None
+    playbook_steps: List[PlaybookStepResponse] = []
+    floor: Optional[ReadinessFloor] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class VerificationNotes(BaseModel):
+    """What a verifier found when checking a record against its source.
+
+    Carried in the body rather than the query string. These notes are internal
+    and can name people who were contacted to confirm a figure; a query string
+    is written into every access log and proxy along the way.
+    """
+
+    notes: str = Field("", max_length=5000)
+
+
+class ApprovalDecisionRequest(BaseModel):
+    """Optional detail supplied with an approval decision."""
+
+    comments: Optional[str] = Field(None, max_length=2000)
+
+
+class RejectionRequest(BaseModel):
+    """Detail supplied when refusing a record.
+
+    Comments are required: a rejection without a stated reason gives the author
+    nothing to act on.
+    """
+
+    comments: str = Field(..., min_length=1, max_length=2000)
+    changes_requested: bool = Field(
+        False,
+        description="True when the record should be revised rather than abandoned",
+    )
+
+
+class WithdrawalRequest(BaseModel):
+    """Detail supplied when retracting something already published.
+
+    A reason is required: the point of withdrawing rather than deleting is that
+    the record states why what was published no longer stands.
+    """
+
+    reason: str = Field(..., min_length=1, max_length=2000)
+
+
+class ApprovalRecordResponse(BaseModel):
+    """One decision in the approval trail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    entity_type: str
+    entity_id: uuid.UUID
+    entity_version: Optional[int] = None
+    decision: ApprovalDecision
+    reviewer_id: uuid.UUID
+    decided_at: datetime
+    comments: Optional[str] = None
+
+
+class PaginatedResponse(BaseModel):
+    """Paginated response envelope."""
+
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    data: List[Any]
+
+
+class WorkflowStageInput(BaseModel):
+    """One review stage in a workflow definition."""
+
+    name: str = Field(..., min_length=1, max_length=160)
+    required_roles: List[str] = Field(..., min_length=1)
+    requires_distinct_actor: bool = Field(
+        True,
+        description=(
+            "Whether whoever clears this stage must differ from whoever cleared "
+            "the previous one. Forced true on the final stage."
+        ),
+    )
+
+
+class WorkflowDefinitionCreate(BaseModel):
+    """A workflow an organisation defines for one kind of content.
+
+    Stages are given in the order they must be cleared. The coarse lifecycle
+    around them — draft, approved, published, withdrawn — is not configurable:
+    see app/services/workflow.py for why.
+    """
+
+    organisation_id: uuid.UUID
+    entity_type: str = Field(..., pattern="^(evidence|story|question)$")
+    name: str = Field(..., min_length=1, max_length=160)
+    description: Optional[str] = None
+    stages: List[WorkflowStageInput] = Field(..., min_length=1)
+
+
+class WorkflowStageResponse(BaseModel):
+    """A stage as stored."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    position: int
+    name: str
+    required_roles: List[str]
+    requires_distinct_actor: bool
+
+
+class WorkflowDefinitionResponse(BaseModel):
+    """A workflow definition and its stages, in order."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    entity_type: str
+    name: str
+    description: Optional[str] = None
+    is_active: bool
+    stages: List[WorkflowStageResponse] = []
+
+
+class WorkflowProgressResponse(BaseModel):
+    """How far a record has got through its organisation's workflow."""
+
+    definition_name: Optional[str] = None
+    current_stage: Optional[str] = None
+    cleared: int
+    total: int
+    is_final_stage: bool
+
+
+class ActionBase(BaseModel):
+    """A decision taken because of something the platform knows."""
+
+    title: str = Field(..., min_length=1, max_length=255)
+    # Why this action follows from that finding. Required, because the
+    # reasoning is the part a reviewer needs and the part nobody can
+    # reconstruct afterwards.
+    rationale: str = Field(..., min_length=1, max_length=20000)
+    scenario_id: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    due_date: Optional[date] = None
+
+
+class ActionCreate(ActionBase):
+    """Raise an action against something the organisation already holds.
+
+    ``origin_type`` and ``origin_id`` are both required: an action nobody can
+    trace back to a finding is a plan with no reason. ``owner_id`` is required
+    for the same kind of reason — unowned work is not work.
+    """
+
+    organisation_id: uuid.UUID
+    origin_type: ActionOrigin
+    origin_id: uuid.UUID
+    owner_id: uuid.UUID
+
+
+class ActionUpdate(BaseModel):
+    """Revise an action that is still open.
+
+    Status is absent: it moves through the dedicated endpoints, which enforce
+    the lifecycle and require an outcome before closing.
+    """
+
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    rationale: Optional[str] = Field(None, min_length=1, max_length=20000)
+    scenario_id: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    due_date: Optional[date] = None
+    owner_id: Optional[uuid.UUID] = None
+
+
+class ActionOutcome(BaseModel):
+    """What happened, or why the action was dropped."""
+
+    outcome: str = Field(..., min_length=1, max_length=20000)
+
+
+class ActionResponse(ActionBase):
+    """An action, its origin, its owner and where it has got to."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    origin_type: ActionOrigin
+    origin_id: uuid.UUID
+    owner_id: uuid.UUID
+    status: ActionStatus
+    started_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
+    outcome: Optional[str] = None
+    created_by_id: Optional[uuid.UUID] = None
+    # Derived from the due date and the status on every read, never stored: a
+    # stored flag is wrong from the moment the clock passes it, and the thing
+    # least likely to happen to a neglected action is an update.
+    overdue: bool = False
+    created_at: datetime
+    updated_at: datetime

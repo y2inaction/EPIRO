@@ -1,0 +1,24 @@
+# Development and test tooling. Not installed into the production image, and
+# not part of the deployed dependency surface.
+#
+# Pinned to the same versions the rebuild was verified against, so a
+# contributor's local run and CI cannot disagree about formatting or typing.
+# An earlier CI failure was caused precisely by that skew.
+-r requirements.txt
+
+# Testing
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+pytest-xdist==3.8.0
+# Required by fastapi.testclient.TestClient.
+httpx==0.28.1
+
+# Linting, formatting and typing
+black==26.5.1
+flake8==7.3.0
+isort==9.0.1
+mypy==2.3.1
+
+# Dependency auditing
+pip-audit==2.9.0
