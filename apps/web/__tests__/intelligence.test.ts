@@ -3,8 +3,12 @@ import {
   barScale,
   basisSentence,
   bucketLabel,
+  bucketLabelFor,
   describeRecord,
   dimensionLabel,
+  hasUnresolvedNames,
+  isIdentifierDimension,
+  orderedDimensions,
   measureLabel,
   recordsQuery,
   suppressedShort,
@@ -173,6 +177,79 @@ describe('bucketLabel', () => {
 
   it('leaves the server’s own wording for an empty column alone', () => {
     expect(bucketLabel('(not recorded)')).toBe('(not recorded)')
+  })
+})
+
+describe('isIdentifierDimension', () => {
+  it('knows which dimensions come back as identifiers rather than words', () => {
+    expect(isIdentifierDimension('geography_id')).toBe(true)
+    expect(isIdentifierDimension('thematic_area_id')).toBe(true)
+    expect(isIdentifierDimension('status')).toBe(false)
+  })
+})
+
+describe('bucketLabelFor', () => {
+  const names = { 'area-1': 'Kano State' }
+
+  it('resolves an identifier to the name it stands for', () => {
+    expect(bucketLabelFor('geography_id', 'area-1', names)).toBe('Kano State')
+  })
+
+  it('shows the identifier when no name was found, rather than hiding the row', () => {
+    // The count is real. Dropping or blanking the bucket would be the same
+    // lie as omitting a suppressed one; the panel says the name is missing.
+    expect(bucketLabelFor('geography_id', 'area-9', names)).toBe('area-9')
+  })
+
+  it('leaves an empty column alone', () => {
+    expect(bucketLabelFor('geography_id', '(not recorded)', names)).toBe('(not recorded)')
+  })
+
+  it('never looks up a dimension whose buckets are already words', () => {
+    expect(bucketLabelFor('status', 'in_review', { in_review: 'Wrong' })).toBe('in review')
+  })
+})
+
+describe('hasUnresolvedNames', () => {
+  const figure = (label: string) => ({
+    label,
+    value: 1,
+    suppressed: false,
+    basis: { measure: 'evidence', dimension: 'geography_id', value: label },
+  })
+
+  it('is true when a bucket is still showing a bare identifier', () => {
+    expect(hasUnresolvedNames([figure('area-9')], 'geography_id', { 'area-1': 'Kano' })).toBe(true)
+  })
+
+  it('is false when every identifier resolved', () => {
+    expect(hasUnresolvedNames([figure('area-1')], 'geography_id', { 'area-1': 'Kano' })).toBe(false)
+  })
+
+  it('does not count the empty-column bucket as unresolved', () => {
+    expect(hasUnresolvedNames([figure('(not recorded)')], 'geography_id', {})).toBe(false)
+  })
+
+  it('never applies to a dimension whose buckets are words', () => {
+    expect(hasUnresolvedNames([figure('published')], 'status', undefined)).toBe(false)
+  })
+})
+
+describe('orderedDimensions', () => {
+  it('puts the dimensions a reader can scan before the ones needing a lookup', () => {
+    expect(orderedDimensions(['geography_id', 'status', 'thematic_area_id', 'category'])).toEqual([
+      'category',
+      'status',
+      'geography_id',
+      'thematic_area_id',
+    ])
+  })
+
+  it('leaves the caller’s array alone', () => {
+    const given = ['geography_id', 'status']
+    orderedDimensions(given)
+
+    expect(given).toEqual(['geography_id', 'status'])
   })
 })
 

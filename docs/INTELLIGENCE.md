@@ -120,16 +120,48 @@ than the number it explains.
 
 ## 5. The dashboard
 
-`/workspace/intelligence` renders the figures, and two decisions in it are
-worth stating because they are where the rules above either survive contact
-with a screen or quietly stop holding.
+The hub is `/workspace/intelligence`, with a section per measure:
+
+```
+/workspace/intelligence            Overview — the headline figures
+        ├── /evidence              Evidence records, every dimension
+        ├── /questions             Questions from the public
+        ├── /integrity             Information integrity signals
+        ├── /missions              Field missions
+        ├── /scenarios             Readiness scenarios
+        ├── /projects              Projects
+        └── /records               The records behind any figure
+```
+
+A section asks the server what that measure can be broken down by and renders
+one panel per dimension, so a dimension added on the server appears without
+the front end changing, and one removed stops being offered rather than
+becoming a panel that refuses.
+
+**A section has no total at the top, deliberately.** A total is a summary
+figure, and the overview already serves those with suppression applied. The
+only other place to get one is the drill-down, which is unsuppressed by design
+(see §4) — so putting that number at the head of a summary page would place an
+unsuppressed aggregate exactly where the threshold exists to prevent one.
+
+Two decisions in the rendering are worth stating because they are where the
+rules above either survive contact with a screen or quietly stop holding.
 
 **Every number is a link.** A headline figure is a stat tile that links to
 `/workspace/intelligence/records` carrying its own basis; every bucket in a
 breakdown links the same way. The reconciliation the API is tested for was
-checked again through the interface: each of the nine headline figures was
-read off the rendered page, its link followed, and the drill-down's total
-compared. All nine agreed.
+checked again through the interface: every figure on the overview and every
+bucket in all six sections was read off the rendered page, its link followed,
+and the drill-down's total compared. All of them agreed.
+
+That check matters most on a dimension that groups by identifier. `geography_id`
+and `thematic_area_id` come back keyed on a UUID, which is no answer to
+anything, so those buckets are given names from `/geography` and
+`/thematic-areas`. The row then shows a name while its link must still carry
+the identifier — show the name and link by the name and every one of those
+rows silently counts nothing. A bucket whose name cannot be found keeps its
+identifier and the panel says the lookup failed, rather than the row being
+dropped: the count is real either way.
 
 **A withheld bucket is a table row, not a missing bar.** This is why the
 breakdowns are tables rather than bar charts. A suppressed bucket cannot be
@@ -167,9 +199,11 @@ Two smaller consequences of the same rule:
   dashboard never sends one, because there is no picker to choose an area
   with. The basis carries it through the drill-down if one is supplied by
   hand.
-- **No breakdown by area or theme.** Both are real dimensions the API offers,
-  but their buckets come back as identifiers, and a table of UUIDs answers
-  nothing. They wait for a screen that can resolve a name.
+- **The name lookup is capped at one page.** Breakdowns by area and theme
+  resolve their buckets against the first 1000 areas and themes, which is the
+  API's own maximum page. Past that a bucket shows its identifier and the
+  panel says so. The proper fix is an endpoint that resolves a set of
+  identifiers to names, rather than fetching everything to build a map.
 - **Nothing is cached.** Every figure is computed on request, which is why it
   can always be reconciled. At a scale where that hurts, the answer is a cache
   with the basis as its key — not a stored number nobody can check.

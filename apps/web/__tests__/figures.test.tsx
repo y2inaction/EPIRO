@@ -127,9 +127,11 @@ describe('BreakdownPanel', () => {
     expect(within(row as HTMLElement).getByText('Withheld')).toBeInTheDocument()
   })
 
-  it('gives the reasoning once beneath the table, not in every withheld row', () => {
+  it('keeps each withheld row short and says the surprising part once', () => {
     // Two withheld rows each repeating the same paragraph turns the
     // explanation into wallpaper, which is how a reader learns to skip it.
+    // The section states the threshold once for the whole measure, so the
+    // panel adds only what that does not cover: the complement.
     render(
       <BreakdownPanel
         heading="What the public is asking about"
@@ -142,7 +144,10 @@ describe('BreakdownPanel', () => {
     )
 
     expect(screen.getAllByText('Fewer than 5 records')).toHaveLength(2)
-    expect(screen.getAllByText(/describe individuals rather than a population/)).toHaveLength(1)
+    expect(screen.getAllByText(/recovered by subtracting/)).toHaveLength(1)
+    expect(
+      screen.queryByText(/describe individuals rather than a population/),
+    ).not.toBeInTheDocument()
   })
 
   it('explains why a bucket large enough to publish is missing too', () => {
@@ -190,6 +195,58 @@ describe('BreakdownPanel', () => {
     )
 
     expect(screen.getByText('Evidence records by verification status')).toBeInTheDocument()
+  })
+
+  it('shows an area name rather than the identifier it grouped by', () => {
+    render(
+      <BreakdownPanel
+        heading="By geography"
+        breakdown={{
+          ...breakdown([
+            {
+              label: 'area-1',
+              value: 4,
+              suppressed: false,
+              basis: { measure: 'evidence', dimension: 'geography_id', value: 'area-1' },
+            },
+          ]),
+          measure: 'evidence',
+          dimension: 'geography_id',
+        }}
+        measureName="Evidence records"
+        names={{ 'area-1': 'Kano State' }}
+      />,
+    )
+
+    expect(screen.getByRole('link', { name: 'Kano State' })).toHaveAttribute(
+      'href',
+      '/workspace/intelligence/records?measure=evidence&dimension=geography_id&value=area-1',
+    )
+  })
+
+  it('says so when a name could not be resolved, instead of dropping the row', () => {
+    render(
+      <BreakdownPanel
+        heading="By geography"
+        breakdown={{
+          ...breakdown([
+            {
+              label: 'area-9',
+              value: 4,
+              suppressed: false,
+              basis: { measure: 'evidence', dimension: 'geography_id', value: 'area-9' },
+            },
+          ]),
+          measure: 'evidence',
+          dimension: 'geography_id',
+        }}
+        measureName="Evidence records"
+        names={{}}
+      />,
+    )
+
+    expect(screen.getByRole('link', { name: 'area-9' })).toBeInTheDocument()
+    expect(screen.getByText(/no name was found/)).toBeInTheDocument()
   })
 
   it('says there is nothing to count rather than drawing an empty table', () => {

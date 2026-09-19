@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
+import { IntelligenceNav } from '@/components/IntelligenceNav'
 import { Notice, PageHeading, Pagination } from '@/components/Shell'
 import { formatCount, formatDate, isoDate } from '@/lib/format'
 import {
@@ -58,14 +59,41 @@ export default async function RecordsPage({
   const measure = params.measure
 
   if (!measure) {
+    // Reached from the nav rather than from a figure. Rather than an error
+    // for arriving the way the nav invites, offer the measures: every one of
+    // them is a basis, just an unfiltered one.
+    const catalogue = await listMeasures()
+
     return (
       <>
-        <PageHeading title="Records behind a figure" />
-        <Notice
-          title="No figure was named"
-          detail="Open this from a number on the dashboard, so it knows what to explain."
+        <PageHeading
+          title="Records"
+          description="Every figure on this dashboard resolves to a set of records. Open one from a number to see exactly what it counted, or start from a whole measure here."
         />
-        <BackLink />
+        <IntelligenceNav current="/workspace/intelligence/records" />
+
+        {!catalogue.ok ? (
+          <Notice title="The measures could not be loaded" detail={catalogue.message} />
+        ) : (
+          <ul className="rounded-xl border border-slate-200 px-5 dark:border-slate-800">
+            {catalogue.value.measures.map((spec) => (
+              <li
+                key={spec.name}
+                className="border-b border-slate-200 py-4 last:border-0 dark:border-slate-800"
+              >
+                <Link
+                  href={{
+                    pathname: '/workspace/intelligence/records',
+                    query: { measure: spec.name },
+                  }}
+                  className={`${LINK} font-medium text-slate-900 dark:text-slate-50`}
+                >
+                  {spec.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </>
     )
   }
@@ -86,10 +114,10 @@ export default async function RecordsPage({
     return (
       <>
         <PageHeading title="Records behind a figure" />
+        <IntelligenceNav current="/workspace/intelligence/records" />
         {/* The API's own refusal, which names the measure or dimension that
             does not exist and what would have worked instead. */}
         <Notice title="These records could not be loaded" detail={result.message} />
-        <BackLink />
       </>
     )
   }
@@ -104,6 +132,8 @@ export default async function RecordsPage({
           records.total === 1 ? 'record' : 'records'
         }. This is the figure's own basis resolved back to the rows it counted.`}
       />
+
+      <IntelligenceNav current="/workspace/intelligence/records" />
 
       {suppressesSmallBuckets(measures, measure) ? (
         <p className="mb-8 max-w-2xl rounded-xl border border-slate-200 p-4 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-400">
@@ -145,8 +175,6 @@ export default async function RecordsPage({
         basePath="/workspace/intelligence/records"
         query={recordsQuery(records.basis)}
       />
-
-      <BackLink />
     </>
   )
 }
@@ -192,18 +220,5 @@ function RecordRow({
         {recorded ? <time dateTime={isoDate(createdAt)}>{recorded}</time> : null}
       </div>
     </li>
-  )
-}
-
-function BackLink() {
-  return (
-    <p className="mt-8">
-      <Link
-        href="/workspace/intelligence"
-        className={`${LINK} text-sm text-slate-700 dark:text-slate-300`}
-      >
-        ← Back to intelligence
-      </Link>
-    </p>
   )
 }

@@ -12,6 +12,7 @@
 
 import type {
   Breakdown,
+  LabelMap,
   MeasureCatalogue,
   Overview,
   RecordPage,
@@ -378,4 +379,46 @@ export function getRecords(
 
 export function listMeasures(): Promise<Result<MeasureCatalogue>> {
   return request<MeasureCatalogue>('/intelligence/measures')
+}
+
+interface Named {
+  id: string
+  name: string
+}
+
+/**
+ * Names for the buckets of a dimension that groups by identifier.
+ *
+ * A breakdown by area or theme comes back keyed on the column the server
+ * grouped by, which is a UUID. These two lists are what turn that into
+ * something a reader can act on.
+ *
+ * Capped at the API's own maximum page. A bucket whose identifier is not in
+ * the page shows the identifier, and the panel says the name could not be
+ * resolved — which is honest about the cap rather than quietly mislabelling
+ * or dropping a real count.
+ */
+const NAME_SOURCE: Record<string, string> = {
+  geography_id: '/geography/?limit=1000',
+  thematic_area_id: '/thematic-areas/?limit=1000',
+}
+
+export async function namesFor(dimension: string): Promise<LabelMap> {
+  const path = NAME_SOURCE[dimension]
+  if (!path) {
+    return {}
+  }
+
+  const result = await request<Page<Named>>(path)
+  if (!result.ok) {
+    // A failed lookup leaves the identifiers showing. The counts are still
+    // right, and the panel says the names are missing.
+    return {}
+  }
+
+  const names: LabelMap = {}
+  for (const item of result.value.data) {
+    names[item.id] = item.name
+  }
+  return names
 }

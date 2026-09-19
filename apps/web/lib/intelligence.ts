@@ -101,6 +101,60 @@ export function bucketLabel(value: string): string {
 }
 
 /**
+ * A dimension whose buckets are identifiers rather than words.
+ *
+ * Grouping by area or by theme is genuinely useful, but the server can only
+ * return the column it grouped on, which is a UUID. Rendered as-is that is a
+ * table of identifiers, which answers nothing — so these dimensions need a
+ * name resolved for each bucket before they are worth showing.
+ */
+export function isIdentifierDimension(dimension: string): boolean {
+  return dimension.endsWith('_id')
+}
+
+/** Identifiers to the names they stand for. */
+export type LabelMap = Record<string, string>
+
+/**
+ * What a bucket should be called.
+ *
+ * An identifier with no name resolved is shown as the identifier rather than
+ * hidden or blanked: the count is real, and pretending the bucket is not there
+ * would be the same lie as omitting a suppressed one. The panel says
+ * separately that some names could not be resolved.
+ */
+export function bucketLabelFor(dimension: string, label: string, names?: LabelMap): string {
+  if (!isIdentifierDimension(dimension) || label.startsWith('(')) {
+    return bucketLabel(label)
+  }
+  return names?.[label] ?? label
+}
+
+/** Whether any bucket in a breakdown is still showing a bare identifier. */
+export function hasUnresolvedNames(figures: Figure[], dimension: string, names?: LabelMap): boolean {
+  if (!isIdentifierDimension(dimension)) {
+    return false
+  }
+  return figures.some((f) => !f.label.startsWith('(') && !names?.[f.label])
+}
+
+/**
+ * The order to show a measure's dimensions in.
+ *
+ * Taken from the server's own list rather than a copy kept here, so a new
+ * dimension appears without this file changing. Only the ordering is a
+ * decision: the ones whose buckets are words come before the ones whose
+ * buckets are identifiers, because the first kind is read at a glance and the
+ * second needs a lookup before it means anything.
+ */
+export function orderedDimensions(dimensions: string[]): string[] {
+  return [...dimensions].sort((a, b) => {
+    const byKind = Number(isIdentifierDimension(a)) - Number(isIdentifierDimension(b))
+    return byKind !== 0 ? byKind : a.localeCompare(b)
+  })
+}
+
+/**
  * The query string that resolves a figure back to its records.
  *
  * Only keys the basis actually carries are included. A dimension with no value

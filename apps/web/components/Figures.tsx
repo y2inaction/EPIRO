@@ -4,14 +4,16 @@ import { formatCount } from '@/lib/format'
 import {
   barPercent,
   barScale,
-  bucketLabel,
+  bucketLabelFor,
   COMPLEMENT_NOTE,
   dimensionLabel,
+  hasUnresolvedNames,
   suppressedShort,
   suppressionReason,
   recordsQuery,
   type Breakdown,
   type Figure,
+  type LabelMap,
 } from '@/lib/intelligence'
 
 /**
@@ -107,13 +109,17 @@ export function BreakdownPanel({
   heading,
   breakdown,
   measureName,
+  names,
 }: {
   heading: string
   breakdown: Breakdown
   measureName: string
+  /** Names for a dimension whose buckets are identifiers. */
+  names?: LabelMap
 }) {
   const scale = barScale(breakdown.figures)
   const dimension = dimensionLabel(breakdown.dimension)
+  const unresolved = hasUnresolvedNames(breakdown.figures, breakdown.dimension, names)
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
@@ -146,6 +152,8 @@ export function BreakdownPanel({
                 figure={figure}
                 scale={scale}
                 minimumCellSize={breakdown.minimum_cell_size}
+                dimension={breakdown.dimension}
+                names={names}
               />
             ))}
           </tbody>
@@ -153,8 +161,22 @@ export function BreakdownPanel({
       )}
 
       {breakdown.suppressed_buckets > 0 ? (
+        // Only the part a reader cannot work out for themselves. That a small
+        // bucket is withheld is stated once for the whole measure above, and
+        // each withheld row says it again in place of its bar; what needs
+        // saying here is why a bucket big enough to publish went with it.
         <p className="mt-4 border-t border-slate-200 pt-3 text-xs text-slate-600 dark:border-slate-800 dark:text-slate-400">
-          {suppressionReason(breakdown.minimum_cell_size)} {COMPLEMENT_NOTE}
+          {COMPLEMENT_NOTE}
+        </p>
+      ) : null}
+
+      {unresolved ? (
+        // Said rather than hidden. The count is real; only the name is
+        // missing, and a reader who sees an identifier deserves to know that
+        // is a lookup failing rather than how the record is stored.
+        <p className="mt-4 border-t border-slate-200 pt-3 text-xs text-slate-600 dark:border-slate-800 dark:text-slate-400">
+          Some rows show an identifier because no name was found for it. The counts are
+          unaffected.
         </p>
       ) : null}
     </section>
@@ -165,10 +187,14 @@ function BreakdownRow({
   figure,
   scale,
   minimumCellSize,
+  dimension,
+  names,
 }: {
   figure: Figure
   scale: number
   minimumCellSize: number
+  dimension: string
+  names?: LabelMap
 }) {
   const width = barPercent(figure, scale)
 
@@ -188,7 +214,7 @@ function BreakdownRow({
             FOCUS
           }
         >
-          {bucketLabel(figure.label)}
+          {bucketLabelFor(dimension, figure.label, names)}
         </Link>
       </th>
 
