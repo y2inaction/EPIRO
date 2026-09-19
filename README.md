@@ -178,6 +178,29 @@ sections above describe the product as a whole, and
 Not yet built, and so not listed above: saved intelligence reports and the
 media library.
 
+## Trying it end to end
+
+The chain the platform is built around — evidence becomes a signal, a signal
+is assessed into a finding, the finding becomes a decision somebody owns —
+can be driven through the API in one go:
+
+```bash
+cd apps/api
+alembic upgrade head
+python scripts/demo_seed.py > demo_ids.txt   # people, places, themes
+IDS=demo_ids.txt bash scripts/demo.sh        # the chain itself
+```
+
+Nothing in `demo.sh` is a fixture. Every step is a real request by the person
+who would really make it, so the audit trail and the change feed afterwards
+show what actually happened — including the 403 when the owner of an action
+tries to record it as done themselves.
+
+It seeds six people because the platform refuses self-certification and one
+account cannot demonstrate that: a verifier cannot approve their own
+verification, an approver cannot publish what they approved, and an action's
+owner cannot close it. They all sign in with `final-test-password`.
+
 ## Development
 
 ### Backend Development
