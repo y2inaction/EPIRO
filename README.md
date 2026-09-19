@@ -186,6 +186,19 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
+### Before pushing
+```bash
+cd apps/api
+./scripts/check.sh            # lint, format, imports, types, migration drift
+./scripts/check.sh --tests    # the above plus the backend suite
+```
+
+This runs **exactly** what CI runs, in the same order. Use it rather than your
+own habitual set of tools: a push was once verified locally with ruff, black
+and mypy and then failed CI on isort, which nothing local had run. Verifying
+with different tools than CI uses is not verifying. If a command changes in
+`.github/workflows/ci.yml`, change it in the script in the same commit.
+
 ### Frontend Development
 ```bash
 cd apps/web
