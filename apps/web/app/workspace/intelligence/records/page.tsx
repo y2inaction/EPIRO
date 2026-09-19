@@ -8,9 +8,11 @@ import { formatCount, formatDate, isoDate } from '@/lib/format'
 import {
   basisSentence,
   describeRecord,
+  filtersFromParams,
   measureLabel,
   recordsQuery,
   suppressesSmallBuckets,
+  type FigureBasis,
   type MeasureCatalogue,
   type RecordSummary,
 } from '@/lib/intelligence'
@@ -42,13 +44,7 @@ const LINK =
 export default async function RecordsPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    measure?: string
-    dimension?: string
-    value?: string
-    geography_id?: string
-    page?: string
-  }>
+  searchParams: Promise<Record<string, string | undefined>>
 }) {
   const me = await getCurrentUser()
   if (!me.ok) {
@@ -57,6 +53,7 @@ export default async function RecordsPage({
 
   const params = await searchParams
   const measure = params.measure
+  const asked = filtersFromParams(params)
 
   if (!measure) {
     // Reached from the nav rather than from a figure. Rather than an error
@@ -70,7 +67,7 @@ export default async function RecordsPage({
           title="Records"
           description="Every figure on this dashboard resolves to a set of records. Open one from a number to see exactly what it counted, or start from a whole measure here."
         />
-        <IntelligenceNav current="/workspace/intelligence/records" />
+        <IntelligenceNav current="/workspace/intelligence/records" filters={asked} />
 
         {!catalogue.ok ? (
           <Notice title="The measures could not be loaded" detail={catalogue.message} />
@@ -98,11 +95,13 @@ export default async function RecordsPage({
     )
   }
 
-  const basis = {
+  // Every filter the figure carried comes back through the URL, so this page
+  // opens exactly the records that number counted rather than a wider set.
+  const basis: FigureBasis = {
     measure,
     dimension: params.dimension,
     value: params.value,
-    geography_id: params.geography_id,
+    ...asked,
   }
   const page = Math.max(1, Number.parseInt(params.page ?? '1', 10) || 1)
 
@@ -114,7 +113,7 @@ export default async function RecordsPage({
     return (
       <>
         <PageHeading title="Records behind a figure" />
-        <IntelligenceNav current="/workspace/intelligence/records" />
+        <IntelligenceNav current="/workspace/intelligence/records" filters={asked} />
         {/* The API's own refusal, which names the measure or dimension that
             does not exist and what would have worked instead. */}
         <Notice title="These records could not be loaded" detail={result.message} />
@@ -133,7 +132,7 @@ export default async function RecordsPage({
         }. This is the figure's own basis resolved back to the rows it counted.`}
       />
 
-      <IntelligenceNav current="/workspace/intelligence/records" />
+      <IntelligenceNav current="/workspace/intelligence/records" filters={asked} />
 
       {suppressesSmallBuckets(measures, measure) ? (
         <p className="mb-8 max-w-2xl rounded-xl border border-slate-200 p-4 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-400">

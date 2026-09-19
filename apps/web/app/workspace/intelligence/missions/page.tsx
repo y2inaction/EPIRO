@@ -6,8 +6,16 @@ export const metadata: Metadata = {
   title: 'Missions intelligence',
 }
 
-export default function MissionsIntelligencePage() {
+export default function MissionsIntelligencePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>
+}) {
   return (
-    <IntelligenceSection measure="missions" current="/workspace/intelligence/missions" />
+    <IntelligenceSection
+      measure="missions"
+      current="/workspace/intelligence/missions"
+      searchParams={searchParams}
+    />
   )
 }

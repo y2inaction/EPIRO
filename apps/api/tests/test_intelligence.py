@@ -17,6 +17,7 @@ sensitive and hiding it would make the breakdown unreadable.
 """
 
 import uuid
+from datetime import timedelta
 from typing import Any, Dict
 
 import pytest
@@ -30,7 +31,9 @@ from app.models import (
     Question,
     QuestionStatus,
     Role,
+    ThematicArea,
     User,
+    VerificationState,
 )
 from app.services import intelligence
 from tests.conftest import (
@@ -48,6 +51,16 @@ BASE = "/api/v1/intelligence"
 def analyst(db: Session, organisation: Organisation) -> User:
     """Someone who reads the dashboard."""
     return member(db, organisation, Role.ANALYST)
+
+
+def make_thematic_area(db: Session) -> ThematicArea:
+    """A theme to filter on."""
+    suffix = uuid.uuid4().hex[:8]
+    theme = ThematicArea(name=f"Theme {suffix}", code=f"th-{suffix}")
+    db.add(theme)
+    db.commit()
+    db.refresh(theme)
+    return theme
 
 
 def ask(db: Session, organisation: Organisation, **overrides: Any) -> Question:
@@ -448,3 +461,213 @@ class TestGeography:
 
         assert figure["value"] == 1
         assert drilled["total"] == 1
+
+
+# --- Filters ---------------------------------------------------------------
+
+
+class TestFilters:
+    """The six filters, and the rule that a filter is never quietly dropped."""
+
+    def test_a_filtered_figure_still_reconciles_with_its_own_drill_down(
+        self, client: TestClient, db: Session, analyst: User, organisation: Organisation
+    ):
+        """The property that makes a filter safe rather than decorative.
+
+        If a filter narrowed the count but did not reach the basis, the figure
+        would count one set of records and its own link would open another.
+        """
+        theme = make_thematic_area(db)
+        for _ in range(3):
+            make_evidence(db, organisation, thematic_area_id=theme.id)
+        make_evidence(db, organisation)
+
+        overview = client.get(
+            f"{BASE}/overview",
+            params={"thematic_area_id": str(theme.id)},
+            headers=auth_header(analyst),
+        ).json()
+
+        for figure in overview["figures"]:
+            basis = {k: v for k, v in figure["basis"].items() if v is not None}
+            assert basis["thematic_area_id"] == str(theme.id), (
+                f"figure '{figure['label']}' was narrowed by a theme its basis " "did not carry"
+            )
+
+            drilled = client.get(
+                f"{BASE}/records", params=basis, headers=auth_header(analyst)
+            ).json()
+            if not figure["suppressed"]:
+                assert drilled["total"] == figure["value"]
+
+    def test_a_filter_a_measure_cannot_honour_is_refused_not_ignored(
+        self, client: TestClient, db: Session, analyst: User, organisation: Organisation
+    ):
+        """Ignoring it would serve an unfiltered count under a filtered heading.
+
+        That is wrong in the one way nobody checks, because it looks exactly
+        like the right answer.
+        """
+        response = client.get(
+            f"{BASE}/breakdown",
+            params={
+                "measure": "questions",
+                "dimension": "category",
+                "verification_status": "verified",
+            },
+            headers=auth_header(analyst),
+        )
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert "verification_status" in detail
+        # A refusal that does not say what would have worked is a dead end.
+        assert "status" in detail
+
+    def test_the_catalogue_says_which_filters_each_measure_takes(
+        self, client: TestClient, analyst: User
+    ):
+        """So a client offers only the filters that work, rather than finding out."""
+        catalogue = client.get(f"{BASE}/measures", headers=auth_header(analyst)).json()
+        by_name = {m["name"]: m for m in catalogue["measures"]}
+
+        assert "verification_status" in by_name["evidence"]["filters"]
+        assert "verification_status" not in by_name["questions"]["filters"]
+        assert "thematic_area_id" not in by_name["questions"]["filters"]
+        # Every measure carries an organisation and a creation date.
+        for measure in catalogue["measures"]:
+            assert {"organisation_id", "since", "until"} <= set(measure["filters"])
+
+    def test_a_mixed_list_names_the_measures_a_filter_forced_it_to_drop(
+        self, client: TestClient, db: Session, analyst: User, organisation: Organisation
+    ):
+        """A missing figure and a figure that counted nothing mean opposite things."""
+        make_evidence(db, organisation)
+
+        overview = client.get(
+            f"{BASE}/overview",
+            params={"verification_status": "verified"},
+            headers=auth_header(analyst),
+        ).json()
+
+        assert "questions" in overview["excluded_measures"]
+        assert all(f["basis"]["measure"] == "evidence" for f in overview["figures"])
+
+    def test_the_date_range_includes_the_whole_closing_day(
+        self, client: TestClient, db: Session, analyst: User, organisation: Organisation
+    ):
+        """An off-by-one here silently drops a day of records."""
+        record = make_evidence(db, organisation)
+        today = record.created_at.date()
+
+        counted = client.get(
+            f"{BASE}/records",
+            params={"measure": "evidence", "since": str(today), "until": str(today)},
+            headers=auth_header(analyst),
+        ).json()
+
+        assert counted["total"] == 1
+
+    def test_a_date_range_before_the_records_counts_none_of_them(
+        self, client: TestClient, db: Session, analyst: User, organisation: Organisation
+    ):
+        record = make_evidence(db, organisation)
+        before = record.created_at.date() - timedelta(days=2)
+
+        counted = client.get(
+            f"{BASE}/records",
+            params={"measure": "evidence", "until": str(before)},
+            headers=auth_header(analyst),
+        ).json()
+
+        assert counted["total"] == 0
+
+    def test_an_organisation_filter_narrows_and_never_widens(
+        self, client: TestClient, db: Session, organisation: Organisation
+    ):
+        """Naming another body's id must not reach into it."""
+        other = make_organisation(db)
+        make_evidence(db, other)
+        mine = member(db, organisation, Role.ANALYST)
+        make_evidence(db, organisation)
+
+        counted = client.get(
+            f"{BASE}/records",
+            params={"measure": "evidence", "organisation_id": str(other.id)},
+            headers=auth_header(mine),
+        ).json()
+
+        assert counted["total"] == 0
+
+
+# --- What remains unresolved -----------------------------------------------
+
+
+class TestUnresolved:
+    def test_it_counts_open_states_and_each_one_reconciles(
+        self, client: TestClient, db: Session, analyst: User, organisation: Organisation
+    ):
+        make_evidence(db, organisation, verification_status=VerificationState.UNVERIFIED)
+        make_evidence(db, organisation, verification_status=VerificationState.VERIFIED)
+
+        response = client.get(f"{BASE}/unresolved", headers=auth_header(analyst)).json()
+        waiting = next(
+            f for f in response["figures"] if f["label"] == "Evidence nobody has checked yet"
+        )
+
+        assert waiting["value"] == 1
+
+        basis = {k: v for k, v in waiting["basis"].items() if v is not None}
+        drilled = client.get(f"{BASE}/records", params=basis, headers=auth_header(analyst)).json()
+        assert drilled["total"] == 1
+
+    def test_every_unresolved_figure_is_a_single_value_basis(
+        self, client: TestClient, analyst: User
+    ):
+        """So each one drills down to exactly the records it counted.
+
+        A broader definition would read better in a heading and could not be
+        checked against its own rows.
+        """
+        response = client.get(f"{BASE}/unresolved", headers=auth_header(analyst)).json()
+
+        assert response["figures"]
+        for figure in response["figures"]:
+            assert figure["basis"]["dimension"], f"{figure['label']} groups by nothing"
+            assert figure["basis"]["value"], f"{figure['label']} names no open state"
+
+
+# --- What is deliberately not offered --------------------------------------
+
+
+class TestNoFilterNarrowsByAPerson:
+    def test_no_filter_names_a_person(self):
+        """Spec section 4, applied to staff as well as citizens.
+
+        Who verified a record is on that record's approval trail, where it is
+        accountability. The same fact as a filter over aggregates is a league
+        table of staff, and this layer does not offer one.
+        """
+        forbidden = {
+            "created_by",
+            "updated_by",
+            "assigned_to",
+            "reviewer_id",
+            "verified_by",
+            "approved_by",
+            "reported_by",
+            "user_id",
+            "owner",
+            "lead_id",
+            "submitter_email",
+        }
+
+        assert not forbidden & set(intelligence.FILTER_COLUMNS)
+
+    def test_no_measure_can_be_filtered_by_a_person(self):
+        for measure in intelligence.MEASURES.values():
+            for name in intelligence.supported_filters(measure):
+                assert not name.endswith("_by"), (
+                    f"'{measure.name}' offers a filter named '{name}', which "
+                    "narrows aggregates by a person"
+                )

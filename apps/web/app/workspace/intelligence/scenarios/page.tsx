@@ -6,8 +6,16 @@ export const metadata: Metadata = {
   title: 'Scenarios intelligence',
 }
 
-export default function ScenariosIntelligencePage() {
+export default function ScenariosIntelligencePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>
+}) {
   return (
-    <IntelligenceSection measure="scenarios" current="/workspace/intelligence/scenarios" />
+    <IntelligenceSection
+      measure="scenarios"
+      current="/workspace/intelligence/scenarios"
+      searchParams={searchParams}
+    />
   )
 }

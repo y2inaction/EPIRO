@@ -40,6 +40,7 @@ conceal the state of public information rather than protect anybody.
 
 import uuid
 from dataclasses import dataclass, field
+from datetime import date, datetime, time, timedelta
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from fastapi import HTTPException, status
@@ -173,6 +174,92 @@ MEASURES: Dict[str, Measure] = {
 }
 
 
+# The filters a caller may narrow any figure by. A closed set, for the same
+# reason dimensions are: a filter resolved by name against arbitrary columns
+# would be a route to every field on the model, including ones nobody meant to
+# be queryable.
+#
+# Each name maps to the column it narrows. ``since`` and ``until`` both narrow
+# ``created_at`` — see the note on Filters about which date that is.
+FILTER_COLUMNS: Dict[str, str] = {
+    "organisation_id": "organisation_id",
+    "geography_id": "geography_id",
+    "thematic_area_id": "thematic_area_id",
+    "verification_status": "verification_status",
+    "status": "status",
+    "since": "created_at",
+    "until": "created_at",
+}
+
+
+@dataclass(frozen=True)
+class Filters:
+    """How a figure was narrowed before anything was counted.
+
+    Part of the basis rather than separate from it. A figure narrowed by a
+    filter its basis did not carry would not reconcile with its own
+    drill-down: the number would have counted one thing and the records
+    another, which is exactly the unexplainable assertion this layer exists to
+    avoid.
+
+    **The dates narrow ``created_at``**, meaning when the platform recorded
+    something, not when the thing itself happened. For evidence those differ:
+    a borehole handed over in June and recorded in September is September's
+    record. Using each measure's own event date instead would make the
+    measures incomparable — a count of "things that happened" and a count of
+    "things we learned" summed into one total — so one meaning is used
+    throughout and stated rather than left to be discovered.
+    """
+
+    organisation_id: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    verification_status: Optional[str] = None
+    status: Optional[str] = None
+    since: Optional[date] = None
+    until: Optional[date] = None
+
+    def active(self) -> Dict[str, Any]:
+        """The filters actually set, by name."""
+        return {
+            name: getattr(self, name) for name in FILTER_COLUMNS if getattr(self, name) is not None
+        }
+
+    def as_dict(self) -> Dict[str, Any]:
+        """The query parameters that reproduce this narrowing."""
+        return {name: str(value) for name, value in self.active().items()}
+
+
+def supported_filters(measure: "Measure") -> List[str]:
+    """Which filters this measure can honour.
+
+    Derived from the model rather than listed by hand, so a column added to an
+    entity becomes filterable without anybody remembering to say so, and one
+    removed stops being offered rather than failing at query time.
+    """
+    return sorted(name for name, column in FILTER_COLUMNS.items() if hasattr(measure.model, column))
+
+
+def require_filters(measure: "Measure", filters: "Filters") -> None:
+    """Refuse a filter the measure cannot honour.
+
+    Refused rather than ignored, and this is the important half. Quietly
+    dropping a filter returns an unfiltered count under a filtered heading —
+    a number that is wrong in the one way nobody checks, because it looks
+    exactly like the right one.
+    """
+    available = supported_filters(measure)
+    for name in filters.active():
+        if name not in available:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"'{measure.name}' cannot be filtered by '{name}'. "
+                    f"Available: {', '.join(available)}"
+                ),
+            )
+
+
 @dataclass(frozen=True)
 class Basis:
     """What a figure counted, in a form that can be resolved back to rows.
@@ -184,7 +271,6 @@ class Basis:
     measure: str
     dimension: Optional[str] = None
     value: Optional[str] = None
-    geography_id: Optional[uuid.UUID] = None
 
     def as_dict(self) -> Dict[str, Any]:
         """The query parameters that resolve this basis back to its records."""
@@ -193,8 +279,6 @@ class Basis:
             params["dimension"] = self.dimension
         if self.value is not None:
             params["value"] = self.value
-        if self.geography_id is not None:
-            params["geography_id"] = str(self.geography_id)
         return params
 
 
@@ -252,10 +336,59 @@ def scoped(
     return statement.where(measure.model.organisation_id.in_(organisation_ids))
 
 
+def apply_filters(
+    statement: Select,
+    measure: Measure,
+    filters: Filters,
+    db: Session,
+) -> Select:
+    """Narrow a statement by everything the caller filtered on."""
+    require_filters(measure, filters)
+
+    if filters.organisation_id is not None:
+        # Narrows within what the caller may already see; it never widens it,
+        # because tenant scoping is applied separately and always.
+        statement = statement.where(measure.model.organisation_id == filters.organisation_id)
+
+    if filters.geography_id is not None:
+        # "In this state" means the state and everything beneath it, matching
+        # how search resolves the same filter.
+        statement = statement.where(
+            measure.model.geography_id.in_(descendant_ids(db, filters.geography_id))
+        )
+
+    if filters.thematic_area_id is not None:
+        statement = statement.where(measure.model.thematic_area_id == filters.thematic_area_id)
+
+    if filters.verification_status is not None:
+        statement = statement.where(
+            measure.model.verification_status.cast(Text) == filters.verification_status
+        )
+
+    if filters.status is not None:
+        statement = statement.where(measure.model.status.cast(Text) == filters.status)
+
+    if filters.since is not None:
+        statement = statement.where(
+            measure.model.created_at >= datetime.combine(filters.since, time.min)
+        )
+
+    if filters.until is not None:
+        # Inclusive of the whole closing day. A reader who asks for "up to the
+        # 30th" means the 30th, not midnight at the start of it, and an
+        # off-by-one here silently drops a day of records.
+        statement = statement.where(
+            measure.model.created_at < datetime.combine(filters.until + timedelta(days=1), time.min)
+        )
+
+    return statement
+
+
 def apply_basis(
     statement: Select,
     measure: Measure,
     basis: Basis,
+    filters: Filters,
     db: Session,
 ) -> Select:
     """Narrow a statement to exactly what a figure counted."""
@@ -269,14 +402,7 @@ def apply_basis(
             # rather than raising.
             statement = statement.where(column.cast(Text) == basis.value)
 
-    if basis.geography_id is not None and measure.geography_column is not None:
-        # "In this state" means the state and everything beneath it, matching
-        # how search resolves the same filter.
-        statement = statement.where(
-            measure.geography_column.in_(descendant_ids(db, basis.geography_id))
-        )
-
-    return statement
+    return apply_filters(statement, measure, filters, db)
 
 
 def count(
@@ -285,11 +411,12 @@ def count(
     basis: Basis,
     organisation_ids: Sequence[uuid.UUID],
     is_platform_admin: bool,
+    filters: Optional[Filters] = None,
 ) -> int:
     """How many records this basis covers."""
     statement = select(func.count()).select_from(measure.model)
     statement = scoped(statement, measure, organisation_ids, is_platform_admin)
-    statement = apply_basis(statement, measure, basis, db)
+    statement = apply_basis(statement, measure, basis, filters or Filters(), db)
     return int(db.execute(statement).scalar_one())
 
 
@@ -345,16 +472,15 @@ def breakdown(
     dimension: str,
     organisation_ids: Sequence[uuid.UUID],
     is_platform_admin: bool,
-    geography_id: Optional[uuid.UUID] = None,
+    filters: Optional[Filters] = None,
 ) -> List[Figure]:
     """Count a measure grouped by one of its dimensions, largest first."""
     column = require_dimension(measure, dimension)
+    narrowing = filters or Filters()
 
     statement = select(column, func.count()).select_from(measure.model).group_by(column)
     statement = scoped(statement, measure, organisation_ids, is_platform_admin)
-    statement = apply_basis(
-        statement, measure, Basis(measure=measure.name, geography_id=geography_id), db
-    )
+    statement = apply_basis(statement, measure, Basis(measure=measure.name), narrowing, db)
 
     figures: List[Figure] = []
     for raw, total in db.execute(statement).all():
@@ -364,12 +490,7 @@ def breakdown(
             disclose(
                 measure,
                 int(total),
-                Basis(
-                    measure=measure.name,
-                    dimension=dimension,
-                    value=text_value,
-                    geography_id=geography_id,
-                ),
+                Basis(measure=measure.name, dimension=dimension, value=text_value),
                 label=text_value if text_value is not None else "(not recorded)",
             )
         )
@@ -391,6 +512,7 @@ def records(
     is_platform_admin: bool,
     skip: int,
     limit: int,
+    filters: Optional[Filters] = None,
 ) -> List[Any]:
     """The rows behind a figure.
 
@@ -400,7 +522,7 @@ def records(
     """
     statement = select(measure.model)
     statement = scoped(statement, measure, organisation_ids, is_platform_admin)
-    statement = apply_basis(statement, measure, basis, db)
+    statement = apply_basis(statement, measure, basis, filters or Filters(), db)
     statement = statement.order_by(measure.model.created_at.desc()).offset(skip).limit(limit)
     return list(db.execute(statement).scalars())
 
@@ -421,31 +543,94 @@ HEADLINES: Sequence[tuple] = (
 )
 
 
-def overview(
+# What "not finished with" means for each measure, as a single value of a
+# single dimension.
+#
+# Single-valued deliberately. A basis expresses one equality, so every figure
+# here drills down to exactly the records it counted — the same guarantee as
+# everywhere else. A broader definition ("anything not published") would read
+# better in a heading and could not be checked against its own rows, and a
+# figure nobody can check is the thing this layer refuses to serve.
+UNRESOLVED: Sequence[tuple] = (
+    ("Evidence nobody has checked yet", EVIDENCE, "verification_status", "unverified"),
+    ("Evidence checked and disputed", EVIDENCE, "verification_status", "disputed"),
+    ("Questions nobody has claimed", QUESTIONS, "status", "new"),
+    ("Questions claimed but unanswered", QUESTIONS, "status", "triaged"),
+    ("Claims not yet looked at", INTEGRITY, "status", "new"),
+    ("Claims looked at and unsettled", INTEGRITY, "finding", "unresolved"),
+    ("Missions still in the field", MISSIONS, "status", "in_progress"),
+    ("Scenarios at red", SCENARIOS, "status", "red"),
+    ("Projects reported delayed", PROJECTS, "status", "delayed"),
+)
+
+
+def _figures_for(
     db: Session,
+    specification: Sequence[tuple],
     organisation_ids: Sequence[uuid.UUID],
     is_platform_admin: bool,
-    geography_id: Optional[uuid.UUID] = None,
+    filters: Filters,
 ) -> List[Figure]:
-    """The headline figures, each carrying its own basis."""
+    """Count a list of (label, measure, dimension, value) against the filters."""
     figures: List[Figure] = []
-    for label, measure_name, dimension, value in HEADLINES:
+
+    for label, measure_name, dimension, value in specification:
         measure = MEASURES[measure_name]
-        basis = Basis(
-            measure=measure_name,
-            dimension=dimension,
-            value=value,
-            geography_id=geography_id,
-        )
+
+        if any(name not in supported_filters(measure) for name in filters.active()):
+            # A mixed-measure list narrowed by a filter only some measures
+            # carry. Refusing the whole request would make the filter useless;
+            # counting the others unfiltered would be a lie. So the figure is
+            # left out, and the response says which measures were dropped.
+            continue
+
+        basis = Basis(measure=measure_name, dimension=dimension, value=value)
         figures.append(
             disclose(
                 measure,
-                count(db, measure, basis, organisation_ids, is_platform_admin),
+                count(db, measure, basis, organisation_ids, is_platform_admin, filters),
                 basis,
                 label,
             )
         )
+
     return figures
+
+
+def dropped_measures(specification: Sequence[tuple], filters: Filters) -> List[str]:
+    """Measures a mixed list had to leave out, and which filter did it."""
+    dropped: List[str] = []
+    for _, measure_name, _, _ in specification:
+        measure = MEASURES[measure_name]
+        missing = [name for name in filters.active() if name not in supported_filters(measure)]
+        if missing and measure_name not in dropped:
+            dropped.append(measure_name)
+    return dropped
+
+
+def overview(
+    db: Session,
+    organisation_ids: Sequence[uuid.UUID],
+    is_platform_admin: bool,
+    filters: Optional[Filters] = None,
+) -> List[Figure]:
+    """The headline figures, each carrying its own basis."""
+    return _figures_for(db, HEADLINES, organisation_ids, is_platform_admin, filters or Filters())
+
+
+def unresolved(
+    db: Session,
+    organisation_ids: Sequence[uuid.UUID],
+    is_platform_admin: bool,
+    filters: Optional[Filters] = None,
+) -> List[Figure]:
+    """What is open: recorded, and not yet taken to a conclusion.
+
+    Every figure here is an open state, not a volume. It answers "what is
+    waiting" rather than "how much have we done", which is the question a
+    dashboard is usually worst at because finished work is easier to count.
+    """
+    return _figures_for(db, UNRESOLVED, organisation_ids, is_platform_admin, filters or Filters())
 
 
 def serialiser_for(measure: Measure) -> Callable[[Any], Any]:

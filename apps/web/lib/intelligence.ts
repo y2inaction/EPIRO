@@ -12,12 +12,45 @@
  * figure explains itself. A blank cell and a zero are different facts.
  */
 
-/** What a figure counted, in the form that resolves it back to rows. */
-export interface FigureBasis {
+/**
+ * How a figure was narrowed before anything was counted.
+ *
+ * The same six the API offers. Which of them a measure can honour differs —
+ * only evidence carries a verification state, only three measures carry a
+ * theme — so the catalogue says per measure, and a filter a measure cannot
+ * honour is refused rather than quietly dropped.
+ */
+export interface FilterSet {
+  organisation_id?: string
+  geography_id?: string
+  thematic_area_id?: string
+  verification_status?: string
+  status?: string
+  since?: string
+  until?: string
+}
+
+export const FILTER_NAMES = [
+  'organisation_id',
+  'geography_id',
+  'thematic_area_id',
+  'verification_status',
+  'status',
+  'since',
+  'until',
+] as const
+
+/**
+ * What a figure counted, in the form that resolves it back to rows.
+ *
+ * Carries the filters as well as the measure and dimension, because the API
+ * puts them there: a figure narrowed by something its basis did not carry
+ * would not reconcile with its own drill-down.
+ */
+export interface FigureBasis extends FilterSet {
   measure: string
   dimension?: string | null
   value?: string | null
-  geography_id?: string | null
 }
 
 export interface Figure {
@@ -32,6 +65,13 @@ export interface Overview {
   figures: Figure[]
   minimum_cell_size: number
   suppression_note: string
+  /**
+   * Measures left out because a filter was applied that they cannot honour.
+   *
+   * Named rather than silently missing: a figure absent from a list and a
+   * figure that counted nothing look identical and mean opposite things.
+   */
+  excluded_measures: string[]
 }
 
 export interface Breakdown {
@@ -55,6 +95,8 @@ export interface MeasureInfo {
   name: string
   label: string
   dimensions: string[]
+  /** Which of the six filters this measure can honour. */
+  filters: string[]
   suppressed_below_minimum: boolean
 }
 
@@ -170,10 +212,84 @@ export function recordsQuery(basis: FigureBasis): Record<string, string> {
   if (basis.value) {
     query.value = basis.value
   }
-  if (basis.geography_id) {
-    query.geography_id = basis.geography_id
+  // Every filter the figure was narrowed by travels with it. Dropping one
+  // here would send the reader to a wider set of records than the number
+  // they clicked on counted.
+  for (const name of FILTER_NAMES) {
+    const value = basis[name]
+    if (value) {
+      query[name] = value
+    }
   }
   return query
+}
+
+/** Only the filters that are set, as query parameters. */
+export function activeFilters(filters: FilterSet): Record<string, string> {
+  const active: Record<string, string> = {}
+  for (const name of FILTER_NAMES) {
+    const value = filters[name]
+    if (value) {
+      active[name] = value
+    }
+  }
+  return active
+}
+
+/**
+ * Drop the filters a measure cannot honour.
+ *
+ * The API refuses one rather than ignoring it, which is right — but a filter
+ * bar that stays put while you move between sections would then break every
+ * section whose measure lacks that column. So the client sends only what the
+ * measure takes, and says which ones it had to set aside.
+ */
+export function filtersFor(filters: FilterSet, supported: string[]): FilterSet {
+  const kept: FilterSet = {}
+  for (const name of FILTER_NAMES) {
+    if (filters[name] && supported.includes(name)) {
+      kept[name] = filters[name]
+    }
+  }
+  return kept
+}
+
+/** The filters that were set but this measure cannot honour. */
+export function unsupportedFilters(filters: FilterSet, supported: string[]): string[] {
+  return FILTER_NAMES.filter((name) => filters[name] && !supported.includes(name))
+}
+
+/**
+ * The filters a page was asked for, read from its query string.
+ *
+ * Filters live in the URL rather than in component state: a filtered view is
+ * then something a person can bookmark and send to a colleague, and every
+ * page lands on the same numbers.
+ */
+export function filtersFromParams(params: Record<string, string | undefined>): FilterSet {
+  const filters: FilterSet = {}
+  for (const name of FILTER_NAMES) {
+    const value = params[name]
+    if (value) {
+      filters[name] = value
+    }
+  }
+  return filters
+}
+
+/** A filter name as a reader would say it. */
+export function filterLabel(name: string): string {
+  return (
+    {
+      organisation_id: 'Organisation',
+      geography_id: 'Area',
+      thematic_area_id: 'Theme',
+      verification_status: 'Verification state',
+      status: 'Status',
+      since: 'Recorded from',
+      until: 'Recorded to',
+    }[name] ?? name.replace(/_id$/, '').replace(/_/g, ' ')
+  )
 }
 
 /** What a figure counted, said in a sentence. */

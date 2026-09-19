@@ -167,7 +167,7 @@ sections above describe the product as a whole, and
 - `/stories/` - Public information
 - `/questions/` - Citizen questions
 - `/integrity/` - Information integrity
-- `/intelligence/` - Dashboard figures, breakdowns and drill-downs
+- `/intelligence/` - Dashboard figures, breakdowns, filters and drill-downs
 - `/missions/` - Field missions, safety check-ins and field capture
 - `/scenarios/` - Readiness, playbooks and drills
 - `/workflows/` - Configurable review stages

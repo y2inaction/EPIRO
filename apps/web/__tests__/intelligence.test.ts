@@ -6,6 +6,9 @@ import {
   bucketLabelFor,
   describeRecord,
   dimensionLabel,
+  filterLabel,
+  filtersFor,
+  filtersFromParams,
   hasUnresolvedNames,
   isIdentifierDimension,
   orderedDimensions,
@@ -14,6 +17,7 @@ import {
   suppressedShort,
   suppressesSmallBuckets,
   suppressionReason,
+  unsupportedFilters,
   type Figure,
   type MeasureCatalogue,
 } from '@/lib/intelligence'
@@ -35,12 +39,14 @@ const catalogue: MeasureCatalogue = {
       name: 'evidence',
       label: 'Evidence records',
       dimensions: ['status', 'verification_status'],
+      filters: ['organisation_id', 'geography_id', 'status', 'verification_status'],
       suppressed_below_minimum: false,
     },
     {
       name: 'questions',
       label: 'Questions from the public',
       dimensions: ['category', 'status'],
+      filters: ['organisation_id', 'geography_id', 'status'],
       suppressed_below_minimum: true,
     },
   ],
@@ -177,6 +183,83 @@ describe('bucketLabel', () => {
 
   it('leaves the server’s own wording for an empty column alone', () => {
     expect(bucketLabel('(not recorded)')).toBe('(not recorded)')
+  })
+})
+
+describe('recordsQuery, with filters', () => {
+  it('carries every filter the figure was narrowed by', () => {
+    // Dropping one here sends the reader to a wider set of records than the
+    // number they clicked on counted.
+    const query = recordsQuery({
+      measure: 'evidence',
+      dimension: 'status',
+      value: 'published',
+      organisation_id: 'org-1',
+      geography_id: 'area-1',
+      thematic_area_id: 'theme-1',
+      verification_status: 'verified',
+      since: '2026-09-01',
+      until: '2026-09-30',
+    })
+
+    expect(query).toEqual({
+      measure: 'evidence',
+      dimension: 'status',
+      value: 'published',
+      organisation_id: 'org-1',
+      geography_id: 'area-1',
+      thematic_area_id: 'theme-1',
+      verification_status: 'verified',
+      since: '2026-09-01',
+      until: '2026-09-30',
+    })
+  })
+})
+
+describe('filtersFromParams', () => {
+  it('reads only the filters, ignoring everything else in the query string', () => {
+    expect(
+      filtersFromParams({ geography_id: 'area-1', page: '3', measure: 'evidence' }),
+    ).toEqual({ geography_id: 'area-1' })
+  })
+
+  it('treats an empty value as unset, so a cleared select does not filter', () => {
+    expect(filtersFromParams({ geography_id: '', status: 'published' })).toEqual({
+      status: 'published',
+    })
+  })
+})
+
+describe('filtersFor', () => {
+  it('sends only what the measure can honour', () => {
+    // The API refuses a filter it cannot apply rather than ignoring it, which
+    // is right — so a bar that stayed put across sections would break every
+    // one whose measure lacks that column.
+    expect(
+      filtersFor(
+        { geography_id: 'area-1', verification_status: 'verified' },
+        ['organisation_id', 'geography_id'],
+      ),
+    ).toEqual({ geography_id: 'area-1' })
+  })
+
+  it('names what it set aside, so a dropped filter is never silent', () => {
+    expect(
+      unsupportedFilters({ geography_id: 'a', verification_status: 'verified' }, [
+        'geography_id',
+      ]),
+    ).toEqual(['verification_status'])
+  })
+
+  it('sets nothing aside when every filter applies', () => {
+    expect(unsupportedFilters({ geography_id: 'a' }, ['geography_id'])).toEqual([])
+  })
+})
+
+describe('filterLabel', () => {
+  it('names a filter the way a person would', () => {
+    expect(filterLabel('thematic_area_id')).toBe('Theme')
+    expect(filterLabel('since')).toBe('Recorded from')
   })
 })
 

@@ -783,9 +783,36 @@ Spec sections 21-22. Read-only. Every figure carries the basis that produced
 it, and that basis resolves back to the records. See
 [INTELLIGENCE.md](INTELLIGENCE.md).
 
+#### Filters
+
+Every endpoint here takes the same six, and a figure carries the ones applied
+inside its own `basis`:
+
+```
+organisation_id    one of the organisations you belong to
+geography_id       an area and everything beneath it
+thematic_area_id   a theme
+verification_status
+status
+since / until      when the platform RECORDED it, not when it happened
+```
+
+A measure that does not carry a column is **refused, never silently
+unfiltered** — `GET /intelligence/measures` says which filters each one takes,
+so a client can offer only those:
+
+```
+GET /intelligence/breakdown?measure=questions&dimension=category&verification_status=verified
+→ 400  "'questions' cannot be filtered by 'verification_status'.
+        Available: geography_id, organisation_id, since, status, until"
+```
+
+`organisation_id` only ever narrows within the tenants you can already see; it
+cannot reach into a body you do not belong to.
+
 #### Headline figures
 ```
-GET /intelligence/overview?geography_id=<optional>
+GET /intelligence/overview?geography_id=<optional>&since=<optional>&…
 Authorization: Bearer <token>
 
 Response: 200 OK
@@ -800,9 +827,35 @@ Response: 200 OK
     ...
   ],
   "minimum_cell_size": 5,
-  "suppression_note": "Counts of records submitted by members of the public are withheld where ..."
+  "suppression_note": "Counts of records submitted by members of the public are withheld where ...",
+  "excluded_measures": []
 }
 ```
+
+`excluded_measures` names measures left out because a filter was applied that
+they cannot honour. A figure missing from a list and a figure that counted
+nothing look identical and mean opposite things, so it is named rather than
+silently absent.
+
+#### What remains unresolved
+```
+GET /intelligence/unresolved
+
+Response: 200 OK — same shape as the overview
+{
+  "figures": [
+    {"label": "Evidence nobody has checked yet", "value": 3, "basis": {...}},
+    {"label": "Questions claimed but unanswered", "value": 7, "basis": {...}},
+    ...
+  ],
+  ...
+}
+```
+
+What has been recorded and not taken to a conclusion. Every figure is **one
+open state of one measure**, which is what lets each drill down to exactly the
+records waiting; a broader definition would read better in a heading and could
+not be checked against its own rows.
 
 #### The records behind a figure
 ```
@@ -856,6 +909,7 @@ Response: 200 OK
   "measures": [
     {"name": "questions", "label": "Questions from the public",
      "dimensions": ["category", "geography_id", "language", "status"],
+     "filters": ["geography_id", "organisation_id", "since", "status", "until"],
      "suppressed_below_minimum": true},
     ...
   ]
@@ -863,7 +917,15 @@ Response: 200 OK
 ```
 
 Served rather than documented, so a client does not hard-code a list that
-would drift from the one the server enforces.
+would drift from the one the server enforces — including `filters`, so it can
+offer only the ones that work rather than discovering the rest by being
+refused.
+
+Neither list contains anything that groups or narrows by a **person**. Who
+verified a record is on that record's own approval trail, where it is
+accountability; the same fact across aggregates would be a league table of
+staff, and spec section 4's prohibition on profiling is not only about
+citizens. A test asserts no such dimension or filter has appeared.
 
 ### Field operations (`/missions`)
 

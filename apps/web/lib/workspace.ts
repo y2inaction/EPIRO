@@ -10,8 +10,11 @@
  * failing, because `next/headers` is server-only.
  */
 
+import { activeFilters, recordsQuery } from '@/lib/intelligence'
 import type {
   Breakdown,
+  FigureBasis,
+  FilterSet,
   LabelMap,
   MeasureCatalogue,
   Overview,
@@ -331,23 +334,25 @@ export function publishQuestion(id: string): Promise<Result<Question>> {
 // caller's tenants rather than one at a time, which the dashboard says out
 // loud rather than implying otherwise with a selector that does nothing.
 
-function withGeography(path: string, geographyId?: string): string {
-  return geographyId ? `${path}geography_id=${encodeURIComponent(geographyId)}` : path
+function query(filters: FilterSet = {}, extra: Record<string, string> = {}): string {
+  return new URLSearchParams({ ...extra, ...activeFilters(filters) }).toString()
 }
 
-export function getOverview(geographyId?: string): Promise<Result<Overview>> {
-  return request<Overview>(withGeography('/intelligence/overview?', geographyId))
+export function getOverview(filters: FilterSet = {}): Promise<Result<Overview>> {
+  return request<Overview>(`/intelligence/overview?${query(filters)}`)
+}
+
+/** What is open, rather than how much has been done. */
+export function getUnresolved(filters: FilterSet = {}): Promise<Result<Overview>> {
+  return request<Overview>(`/intelligence/unresolved?${query(filters)}`)
 }
 
 export function getBreakdown(
   measure: string,
   dimension: string,
-  geographyId?: string,
+  filters: FilterSet = {},
 ): Promise<Result<Breakdown>> {
-  const path =
-    `/intelligence/breakdown?measure=${encodeURIComponent(measure)}` +
-    `&dimension=${encodeURIComponent(dimension)}&`
-  return request<Breakdown>(withGeography(path, geographyId))
+  return request<Breakdown>(`/intelligence/breakdown?${query(filters, { measure, dimension })}`)
 }
 
 /**
@@ -357,31 +362,22 @@ export function getBreakdown(
  * dashboard checkable rather than asserted.
  */
 export function getRecords(
-  basis: { measure: string; dimension?: string; value?: string; geography_id?: string },
+  basis: FigureBasis,
   page = 1,
   pageSize = 25,
 ): Promise<Result<RecordPage>> {
-  const query = new URLSearchParams({ measure: basis.measure })
-  if (basis.dimension) {
-    query.set('dimension', basis.dimension)
-  }
-  if (basis.value) {
-    query.set('value', basis.value)
-  }
-  if (basis.geography_id) {
-    query.set('geography_id', basis.geography_id)
-  }
-  query.set('skip', String((Math.max(1, page) - 1) * pageSize))
-  query.set('limit', String(pageSize))
+  const params = new URLSearchParams(recordsQuery(basis))
+  params.set('skip', String((Math.max(1, page) - 1) * pageSize))
+  params.set('limit', String(pageSize))
 
-  return request<RecordPage>(`/intelligence/records?${query.toString()}`)
+  return request<RecordPage>(`/intelligence/records?${params.toString()}`)
 }
 
 export function listMeasures(): Promise<Result<MeasureCatalogue>> {
   return request<MeasureCatalogue>('/intelligence/measures')
 }
 
-interface Named {
+export interface Named {
   id: string
   name: string
 }
@@ -403,21 +399,21 @@ const NAME_SOURCE: Record<string, string> = {
   thematic_area_id: '/thematic-areas/?limit=1000',
 }
 
-export async function namesFor(dimension: string): Promise<LabelMap> {
+export async function listNamed(dimension: string): Promise<Named[]> {
   const path = NAME_SOURCE[dimension]
   if (!path) {
-    return {}
+    return []
   }
 
   const result = await request<Page<Named>>(path)
-  if (!result.ok) {
-    // A failed lookup leaves the identifiers showing. The counts are still
-    // right, and the panel says the names are missing.
-    return {}
-  }
+  // A failed lookup leaves the identifiers showing. The counts are still
+  // right, and the panel says the names are missing.
+  return result.ok ? result.value.data : []
+}
 
+export async function namesFor(dimension: string): Promise<LabelMap> {
   const names: LabelMap = {}
-  for (const item of result.value.data) {
+  for (const item of await listNamed(dimension)) {
     names[item.id] = item.name
   }
   return names

@@ -86,7 +86,55 @@ withheld. That is the price of the first one being genuinely hidden. **A
 threshold that can be subtracted away is worse than none**, because it implies
 a protection that is not there.
 
-## 3. What cannot be asked
+## 3. Filters, and why one is refused rather than ignored
+
+Every figure can be narrowed by six things: organisation, area, theme,
+verification state, status, and a date range.
+
+**A filter is part of the basis.** It is carried inside each figure's own
+`basis` and travels into the drill-down, because a figure narrowed by
+something its basis did not carry would count one set of records and link to
+another — a failure that looks exactly like success. A test applies a theme
+filter to the whole overview and requires every figure to both carry it and
+reconcile.
+
+**A measure that cannot honour a filter refuses it.** Only evidence records a
+verification state; only three measures carry a theme. Quietly dropping the
+filter would serve an unfiltered count under a filtered heading, which is
+wrong in the one way nobody checks. So `/intelligence/measures` says which
+filters each measure takes, a client sends only those, and anything else is a
+400 naming what would have worked.
+
+On a list that spans measures — the overview, the unresolved list — refusing
+outright would make the filter useless and counting the rest unfiltered would
+be a lie, so the measures that cannot honour it are left out and **named** in
+`excluded_measures`. A figure missing from a list and a figure that counted
+nothing look identical and mean opposite things.
+
+**The dates are recording dates.** `since` and `until` narrow on when the
+platform recorded something, not when the thing happened. For evidence those
+differ: a borehole handed over in June and recorded in September is a
+September record. Using each measure's own event date would make the measures
+incomparable — a count of "things that happened" added to a count of "things
+we learned" — so one meaning is used throughout, and the filter bar says so
+where the control is rather than in a footnote.
+
+## 4. What is still open
+
+`/intelligence/unresolved` answers the question a dashboard is usually worst
+at. Finished work is easy to count; work that is waiting is not, and a
+platform that only reports volume will always look busier than it is
+accountable.
+
+Every figure is **one open state of one measure** — evidence nobody has
+checked, questions claimed but unanswered, claims looked at and unsettled,
+missions still in the field, scenarios at red. Single-valued deliberately: a
+basis expresses one equality, so each figure drills down to exactly the
+records waiting. A broader definition ("anything not published") would read
+better in a heading and could not be checked against its own rows, and a
+figure nobody can check is the thing this layer refuses to serve.
+
+## 5. What cannot be asked
 
 Dimensions are a **closed set** per measure. A caller cannot group by an
 arbitrary column, so no dimension can become a route to a field nobody meant to
@@ -104,7 +152,17 @@ rather than records — `submitter_email`, `created_by`, `assigned_to`,
 
 The 400 names what *would* have worked. A refusal that does not is a dead end.
 
-## 4. Why the drill-down is not suppressed
+**The filters are a closed set for the same reason**, and none of them names a
+person: not the author, not the reviewer, not the assignee. Who verified a
+record is on that record's own approval trail, where it is accountability. The
+same fact as a filter across aggregates is a league table of staff, and
+section 4's prohibition on profiling is not only about citizens — the same
+line is held for drill findings, which record what the response could not do
+rather than who let it down, and for mission check-ins, which record a state
+rather than a position. A test asserts no filter ending in `_by` and no filter
+from a list of person-shaped names has appeared.
+
+## 6. Why the drill-down is not suppressed
 
 `/intelligence/records` returns the rows without applying the threshold, and
 that is correct rather than an oversight.
@@ -118,12 +176,13 @@ second access control over records their custodians can already open.
 A drill-down is scoped exactly as the figure was, so it can never reach further
 than the number it explains.
 
-## 5. The dashboard
+## 7. The dashboard
 
 The hub is `/workspace/intelligence`, with a section per measure:
 
 ```
 /workspace/intelligence            Overview — the headline figures
+        ├── /unresolved            What is still waiting
         ├── /evidence              Evidence records, every dimension
         ├── /questions             Questions from the public
         ├── /integrity             Information integrity signals
@@ -138,10 +197,26 @@ one panel per dimension, so a dimension added on the server appears without
 the front end changing, and one removed stops being offered rather than
 becoming a panel that refuses.
 
+**The filter bar is a plain GET form**, so the filters end up in the URL. A
+filtered view is then something a person can bookmark and send to a colleague,
+and it works with scripting off. Three consequences worth stating:
+
+- **A section offers only the filters its measure takes**, from the catalogue.
+  Anything else set is dropped before the request and **named on the page**,
+  because the server refuses what it cannot apply and a silent drop would be
+  worse than either.
+- **Organisation, area and dates travel with you through the nav.** Status and
+  verification state do not: "published" means one thing for evidence and
+  another for a question, so carrying one across would quietly change what it
+  selected.
+- **The status options come from an unfiltered breakdown.** Drawing them from
+  the filtered one would leave the select holding only the value already
+  chosen, so a reader could narrow once and never change their mind.
+
 **A section has no total at the top, deliberately.** A total is a summary
 figure, and the overview already serves those with suppression applied. The
 only other place to get one is the drill-down, which is unsuppressed by design
-(see §4) — so putting that number at the head of a summary page would place an
+(see §6) — so putting that number at the head of a summary page would place an
 unsuppressed aggregate exactly where the threshold exists to prevent one.
 
 Two decisions in the rendering are worth stating because they are where the
@@ -180,7 +255,7 @@ Two smaller consequences of the same rule:
   why that is not a contradiction: the threshold protects the shape of a
   published summary, not an organisation's records from its own staff.
 
-## 6. What is not built
+## 8. What is not built
 
 - **No time series.** Every figure is a count as of now. Trend over time would
   need either a period filter on each measure or stored snapshots, and neither
@@ -189,16 +264,16 @@ Two smaller consequences of the same rule:
   writing something up. That would be content, and content on this platform
   goes through an approval workflow — so it belongs with stories rather than
   bolted onto a read-only analytics layer.
-- **No cross-organisation comparison, and no way to narrow to one.** Every
-  figure is scoped to the caller's own tenants — all of them at once. Somebody
-  in two organisations sees the two counted together and cannot separate them,
-  which the dashboard says on the page rather than implying otherwise with a
-  selector that does nothing. Comparing bodies against each other is a
-  different and much more sensitive product than counting your own records.
-- **No filter by area on the screen.** The API takes a `geography_id` and the
-  dashboard never sends one, because there is no picker to choose an area
-  with. The basis carries it through the drill-down if one is supplied by
-  hand.
+- **No cross-organisation comparison.** Every figure is scoped to the caller's
+  own tenants, and the organisation filter only ever narrows within them.
+  Comparing bodies against each other is a different and much more sensitive
+  product than counting your own records.
+- **No change over time, only a window.** A date range answers "how many in
+  September". It does not answer "what changed": that needs either two windows
+  compared or the audit trail read as a feed, and neither is built. The trail
+  itself exists — every state transition writes an entry with its actor and
+  timestamp — so the question is answerable per record on its own approval
+  trail, just not in aggregate here.
 - **The name lookup is capped at one page.** Breakdowns by area and theme
   resolve their buckets against the first 1000 areas and themes, which is the
   API's own maximum page. Past that a bucket shows its identifier and the

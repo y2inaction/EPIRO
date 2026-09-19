@@ -1,5 +1,17 @@
 import Link from 'next/link'
 
+import { activeFilters, filtersFor, type FilterSet } from '@/lib/intelligence'
+
+/**
+ * Filters that mean the same thing on every page here, and so travel with a
+ * reader who moves between them.
+ *
+ * Status and verification state deliberately do not. "Published" means one
+ * thing for evidence and another for a question, so carrying one across would
+ * quietly change what it selected; they stay on the section that set them.
+ */
+const TRAVELS = ['organisation_id', 'geography_id', 'since', 'until']
+
 /**
  * The sections of the intelligence hub.
  *
@@ -13,6 +25,7 @@ import Link from 'next/link'
  */
 export const SECTIONS = [
   { href: '/workspace/intelligence', label: 'Overview', measure: null },
+  { href: '/workspace/intelligence/unresolved', label: 'Unresolved', measure: null },
   { href: '/workspace/intelligence/evidence', label: 'Evidence', measure: 'evidence' },
   { href: '/workspace/intelligence/questions', label: 'Questions', measure: 'questions' },
   { href: '/workspace/intelligence/integrity', label: 'Integrity', measure: 'integrity_signals' },
@@ -31,7 +44,16 @@ export type SectionHref = (typeof SECTIONS)[number]['href']
  * this a client component and ship the whole nav to the browser for a link
  * list that never changes.
  */
-export function IntelligenceNav({ current }: { current: SectionHref }) {
+export function IntelligenceNav({
+  current,
+  filters = {},
+}: {
+  current: SectionHref
+  /** Carried onto every section, so a filtered view stays filtered. */
+  filters?: FilterSet
+}) {
+  const carried = activeFilters(filtersFor(filters, TRAVELS))
+
   return (
     <nav aria-label="Intelligence" className="mb-8 flex flex-wrap gap-2">
       {SECTIONS.map((section) => {
@@ -40,7 +62,7 @@ export function IntelligenceNav({ current }: { current: SectionHref }) {
         return (
           <Link
             key={section.href}
-            href={section.href}
+            href={{ pathname: section.href, query: carried }}
             aria-current={here ? 'page' : undefined}
             className={
               'rounded-md border px-3 py-1.5 text-sm transition ' +

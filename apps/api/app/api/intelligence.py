@@ -5,17 +5,26 @@ Every figure these endpoints serve carries the basis that produced it, and
 reader cannot check is an assertion, and this platform does not make those
 anywhere else.
 
-The rules live in ``app.services.intelligence``. Two are worth restating:
+The rules live in ``app.services.intelligence``. Three are worth restating:
 
 **Nothing here analyses people.** Intelligence means counting the platform's
 own records — what a body has evidenced, been asked and done. Spec section 4
 forbids profiling, and the measures are a closed set of the platform's own
-entities, so there is no dimension to group by that could become one.
+entities, so there is no dimension to group by that could become one. The
+filters are a closed set for the same reason, and there is deliberately none
+that narrows by a person: not the author, not the reviewer, not the assignee.
+Who verified a record is on that record's own approval trail, where it is
+accountability; the same fact aggregated into a league table of staff is
+performance surveillance, and it is not offered here.
 
 **A bucket too small to be anything but a person is suppressed.** Questions
 come from members of the public, so a breakdown of them withholds any bucket
 below the minimum cell size. A zero is still reported as zero: "nobody asked"
 is not sensitive, and hiding it would make the breakdown unreadable.
+
+**A filter a measure cannot honour is refused, never ignored.** Quietly
+dropping one returns an unfiltered count under a filtered heading, which is
+wrong in the one way nobody checks.
 
 Read-only. There is no endpoint here that writes anything, which is why there
 is no audit entry: nothing changes state, and the records these figures count
@@ -23,6 +32,7 @@ carry their own trails.
 """
 
 import uuid
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -47,9 +57,49 @@ SUPPRESSION_NOTE = (
     "is reported as zero."
 )
 
+DATE_NOTE = (
+    "A date range narrows on when the platform recorded something, not when "
+    "the thing itself happened. For evidence those differ: a handover in June "
+    "recorded in September is a September record."
+)
 
-def _figure(figure: intelligence.Figure) -> FigureResponse:
-    """Serialise a figure with the basis that reproduces it."""
+
+def _filters(
+    organisation_id: Optional[uuid.UUID] = Query(
+        None, description="Narrow to one of the organisations you belong to"
+    ),
+    geography_id: Optional[uuid.UUID] = Query(
+        None, description="An area and everything beneath it"
+    ),
+    thematic_area_id: Optional[uuid.UUID] = Query(None),
+    verification_status: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    since: Optional[date] = Query(None, description="Recorded on or after this date"),
+    until: Optional[date] = Query(None, description="Recorded on or before this date"),
+) -> intelligence.Filters:
+    """The filter set, shared by every endpoint here.
+
+    One dependency rather than seven repeated parameters, so a filter added
+    later reaches every figure at once instead of reaching some of them and
+    being silently absent from the rest.
+    """
+    return intelligence.Filters(
+        organisation_id=organisation_id,
+        geography_id=geography_id,
+        thematic_area_id=thematic_area_id,
+        verification_status=verification_status,
+        status=status,
+        since=since,
+        until=until,
+    )
+
+
+def _figure(figure: intelligence.Figure, filters: intelligence.Filters) -> FigureResponse:
+    """Serialise a figure with the basis that reproduces it.
+
+    The filters are part of that basis. A figure narrowed by a filter its
+    basis did not carry would not reconcile with its own drill-down.
+    """
     return FigureResponse(
         label=figure.label,
         value=figure.value,
@@ -58,16 +108,14 @@ def _figure(figure: intelligence.Figure) -> FigureResponse:
             measure=figure.basis.measure,
             dimension=figure.basis.dimension,
             value=figure.basis.value,
-            geography_id=figure.basis.geography_id,
+            **filters.as_dict(),
         ),
     )
 
 
 @router.get("/overview", response_model=IntelligenceOverview)
 async def get_overview(
-    geography_id: Optional[uuid.UUID] = Query(
-        None, description="Restrict to an area and everything beneath it"
-    ),
+    filters: intelligence.Filters = Depends(_filters),
     db: Session = Depends(get_db),
     access: AccessControl = Depends(get_access),
 ):
@@ -80,13 +128,41 @@ async def get_overview(
         db,
         sorted(access.organisation_ids),
         access.is_platform_admin,
-        geography_id=geography_id,
+        filters=filters,
     )
 
     return IntelligenceOverview(
-        figures=[_figure(f) for f in figures],
+        figures=[_figure(f, filters) for f in figures],
         minimum_cell_size=intelligence.MIN_CELL_SIZE,
         suppression_note=SUPPRESSION_NOTE,
+        excluded_measures=intelligence.dropped_measures(intelligence.HEADLINES, filters),
+    )
+
+
+@router.get("/unresolved", response_model=IntelligenceOverview)
+async def get_unresolved(
+    filters: intelligence.Filters = Depends(_filters),
+    db: Session = Depends(get_db),
+    access: AccessControl = Depends(get_access),
+):
+    """What is open: recorded, and not yet taken to a conclusion.
+
+    The same shape as the overview, because it is the same mechanism: each
+    figure is a measure and one open state, carrying the basis that resolves
+    it back to the records waiting.
+    """
+    figures = intelligence.unresolved(
+        db,
+        sorted(access.organisation_ids),
+        access.is_platform_admin,
+        filters=filters,
+    )
+
+    return IntelligenceOverview(
+        figures=[_figure(f, filters) for f in figures],
+        minimum_cell_size=intelligence.MIN_CELL_SIZE,
+        suppression_note=SUPPRESSION_NOTE,
+        excluded_measures=intelligence.dropped_measures(intelligence.UNRESOLVED, filters),
     )
 
 
@@ -94,7 +170,7 @@ async def get_overview(
 async def get_breakdown(
     measure: str = Query(..., description="evidence, questions, projects, missions, …"),
     dimension: str = Query(..., description="A dimension the measure offers"),
-    geography_id: Optional[uuid.UUID] = Query(None),
+    filters: intelligence.Filters = Depends(_filters),
     db: Session = Depends(get_db),
     access: AccessControl = Depends(get_access),
 ):
@@ -102,12 +178,13 @@ async def get_breakdown(
 
     The dimension must be one the measure offers: a closed set, so a caller
     cannot group by an arbitrary column and reach a field nobody meant to
-    aggregate. An unknown measure or dimension is refused with the available
-    ones named, because a 400 that does not say what would have worked is a
-    dead end.
+    aggregate. An unknown measure, dimension or filter is refused with the
+    available ones named, because a 400 that does not say what would have
+    worked is a dead end.
     """
     spec = intelligence.require_measure(measure)
     intelligence.require_dimension(spec, dimension)
+    intelligence.require_filters(spec, filters)
 
     figures = intelligence.breakdown(
         db,
@@ -115,13 +192,13 @@ async def get_breakdown(
         dimension,
         sorted(access.organisation_ids),
         access.is_platform_admin,
-        geography_id=geography_id,
+        filters=filters,
     )
 
     return BreakdownResponse(
         measure=measure,
         dimension=dimension,
-        figures=[_figure(f) for f in figures],
+        figures=[_figure(f, filters) for f in figures],
         minimum_cell_size=intelligence.MIN_CELL_SIZE,
         suppressed_buckets=sum(1 for f in figures if f.suppressed),
     )
@@ -132,7 +209,7 @@ async def get_records(
     measure: str = Query(...),
     dimension: Optional[str] = Query(None),
     value: Optional[str] = Query(None),
-    geography_id: Optional[uuid.UUID] = Query(None),
+    filters: intelligence.Filters = Depends(_filters),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -152,17 +229,13 @@ async def get_records(
     published summary, not the records from their own custodians.
     """
     spec = intelligence.require_measure(measure)
-    basis = intelligence.Basis(
-        measure=measure,
-        dimension=dimension,
-        value=value,
-        geography_id=geography_id,
-    )
+    intelligence.require_filters(spec, filters)
+    basis = intelligence.Basis(measure=measure, dimension=dimension, value=value)
 
     organisation_ids = sorted(access.organisation_ids)
-    total = intelligence.count(db, spec, basis, organisation_ids, access.is_platform_admin)
+    total = intelligence.count(db, spec, basis, organisation_ids, access.is_platform_admin, filters)
     rows = intelligence.records(
-        db, spec, basis, organisation_ids, access.is_platform_admin, skip, limit
+        db, spec, basis, organisation_ids, access.is_platform_admin, skip, limit, filters
     )
 
     serialise = intelligence.serialiser_for(spec)
@@ -173,7 +246,7 @@ async def get_records(
         "page": skip // limit + 1,
         "page_size": limit,
         "total_pages": (total + limit - 1) // limit,
-        "basis": basis.as_dict(),
+        "basis": {**basis.as_dict(), **filters.as_dict()},
         "data": data,
     }
     return result
@@ -183,19 +256,23 @@ async def get_records(
 async def list_measures(
     access: AccessControl = Depends(get_access),
 ):
-    """What can be counted, and how each measure can be broken down.
+    """What can be counted, how each measure can be broken down and filtered.
 
     Served rather than documented so a client can build a dashboard without
-    hard-coding a list that would drift from the one the server enforces.
+    hard-coding a list that would drift from the one the server enforces —
+    including which filters a measure can honour, so a client can offer only
+    those rather than discovering the rest by being refused.
     """
     return {
         "minimum_cell_size": intelligence.MIN_CELL_SIZE,
         "suppression_note": SUPPRESSION_NOTE,
+        "date_note": DATE_NOTE,
         "measures": [
             {
                 "name": spec.name,
                 "label": spec.label,
                 "dimensions": sorted(spec.dimensions),
+                "filters": intelligence.supported_filters(spec),
                 # Stated plainly so a client can show the reader why a bucket
                 # is missing, rather than rendering an unexplained blank.
                 "suppressed_below_minimum": spec.discloses_individuals,

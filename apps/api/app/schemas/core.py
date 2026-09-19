@@ -758,7 +758,18 @@ class FigureBasis(BaseModel):
     measure: str
     dimension: Optional[str] = None
     value: Optional[str] = None
+
+    # The filters are part of the basis, not separate from it. A figure
+    # narrowed by something its basis did not carry would not reconcile with
+    # its own drill-down: the number counted one set of records and the link
+    # would open another.
+    organisation_id: Optional[uuid.UUID] = None
     geography_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    verification_status: Optional[str] = None
+    status: Optional[str] = None
+    since: Optional[date] = None
+    until: Optional[date] = None
 
 
 class FigureResponse(BaseModel):
@@ -780,6 +791,11 @@ class IntelligenceOverview(BaseModel):
     # Named in the response rather than only in documentation, so a client
     # rendering a suppressed cell can explain why rather than showing a blank.
     suppression_note: str
+    # Measures left out because a filter was applied that they cannot honour.
+    # Named rather than silently missing: a figure absent from a list is
+    # indistinguishable from a figure that counted nothing, and the two mean
+    # opposite things.
+    excluded_measures: List[str] = []
 
 
 class BreakdownResponse(BaseModel):
