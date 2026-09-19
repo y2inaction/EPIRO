@@ -95,11 +95,10 @@ RESTful API with OpenAPI documentation:
 - `/api/v1/evidence/` - Evidence
 - `/api/v1/sources/` - Sources
 - `/api/v1/stories/` - Stories
-- `/api/v1/assets/` - Media assets
 - `/api/v1/questions/` - Questions
-- `/api/v1/field-missions/` - Field work
+- `/api/v1/missions/` - Field work
 - `/api/v1/integrity/` - Information integrity
-- `/api/v1/intelligence/` - Intelligence reports
+- `/api/v1/intelligence/` - Dashboard figures, breakdowns and drill-downs
 - `/api/v1/scenarios/` - Readiness scenarios, playbooks and drills
 - `/api/v1/search/` - Global search
 

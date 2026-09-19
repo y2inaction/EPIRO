@@ -156,6 +156,13 @@ jobs:
         working-directory: ./apps/web
         run: npm run type-check
 
+      # This job was named "Test Frontend" while running no tests at all. The
+      # suite existed and nothing in CI executed it, so a broken front-end
+      # test could reach the default branch with every check green.
+      - name: Test
+        working-directory: ./apps/web
+        run: npm test
+
       - name: Build
         working-directory: ./apps/web
         run: npm run build

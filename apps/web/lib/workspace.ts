@@ -10,6 +10,12 @@
  * failing, because `next/headers` is server-only.
  */
 
+import type {
+  Breakdown,
+  MeasureCatalogue,
+  Overview,
+  RecordPage,
+} from '@/lib/intelligence'
 import { readToken } from '@/lib/session'
 import type { CurrentUser } from '@/lib/session'
 
@@ -315,4 +321,61 @@ export function rejectQuestion(
 
 export function publishQuestion(id: string): Promise<Result<Question>> {
   return request<Question>(`/questions/${encodeURIComponent(id)}/publish`, { method: 'POST' })
+}
+
+// --- Intelligence ----------------------------------------------------------
+//
+// Read-only, and scoped by the server to every organisation the caller belongs
+// to. There is no organisation parameter to pass: the API counts across the
+// caller's tenants rather than one at a time, which the dashboard says out
+// loud rather than implying otherwise with a selector that does nothing.
+
+function withGeography(path: string, geographyId?: string): string {
+  return geographyId ? `${path}geography_id=${encodeURIComponent(geographyId)}` : path
+}
+
+export function getOverview(geographyId?: string): Promise<Result<Overview>> {
+  return request<Overview>(withGeography('/intelligence/overview?', geographyId))
+}
+
+export function getBreakdown(
+  measure: string,
+  dimension: string,
+  geographyId?: string,
+): Promise<Result<Breakdown>> {
+  const path =
+    `/intelligence/breakdown?measure=${encodeURIComponent(measure)}` +
+    `&dimension=${encodeURIComponent(dimension)}&`
+  return request<Breakdown>(withGeography(path, geographyId))
+}
+
+/**
+ * The records behind a figure.
+ *
+ * Takes the figure's own basis back, which is what makes a number on the
+ * dashboard checkable rather than asserted.
+ */
+export function getRecords(
+  basis: { measure: string; dimension?: string; value?: string; geography_id?: string },
+  page = 1,
+  pageSize = 25,
+): Promise<Result<RecordPage>> {
+  const query = new URLSearchParams({ measure: basis.measure })
+  if (basis.dimension) {
+    query.set('dimension', basis.dimension)
+  }
+  if (basis.value) {
+    query.set('value', basis.value)
+  }
+  if (basis.geography_id) {
+    query.set('geography_id', basis.geography_id)
+  }
+  query.set('skip', String((Math.max(1, page) - 1) * pageSize))
+  query.set('limit', String(pageSize))
+
+  return request<RecordPage>(`/intelligence/records?${query.toString()}`)
+}
+
+export function listMeasures(): Promise<Result<MeasureCatalogue>> {
+  return request<MeasureCatalogue>('/intelligence/measures')
 }

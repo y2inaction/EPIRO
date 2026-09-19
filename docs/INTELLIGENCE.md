@@ -118,10 +118,38 @@ second access control over records their custodians can already open.
 A drill-down is scoped exactly as the figure was, so it can never reach further
 than the number it explains.
 
-## 5. What is not built
+## 5. The dashboard
 
-- **No front end.** The API is complete and exercised; there is no dashboard
-  screen.
+`/workspace/intelligence` renders the figures, and two decisions in it are
+worth stating because they are where the rules above either survive contact
+with a screen or quietly stop holding.
+
+**Every number is a link.** A headline figure is a stat tile that links to
+`/workspace/intelligence/records` carrying its own basis; every bucket in a
+breakdown links the same way. The reconciliation the API is tested for was
+checked again through the interface: each of the nine headline figures was
+read off the rendered page, its link followed, and the drill-down's total
+compared. All nine agreed.
+
+**A withheld bucket is a table row, not a missing bar.** This is why the
+breakdowns are tables rather than bar charts. A suppressed bucket cannot be
+drawn as a bar: zero length says it is zero, and leaving it out says it does
+not exist, and both are false about a bucket whose only problem is being
+small. In a table the bar is one column, and a row with no bar to draw uses
+that space to say `Fewer than 5 records`, with the reasoning once beneath the
+table.
+
+Two smaller consequences of the same rule:
+
+- **Bars scale to the largest *reported* bucket.** Scaling to a withheld one
+  would let its value be measured off the others with a ruler — the
+  suppression defeated by geometry rather than by arithmetic.
+- **A withheld figure still links to its records**, and the drill-down says
+  why that is not a contradiction: the threshold protects the shape of a
+  published summary, not an organisation's records from its own staff.
+
+## 6. What is not built
+
 - **No time series.** Every figure is a count as of now. Trend over time would
   need either a period filter on each measure or stored snapshots, and neither
   is here.
@@ -129,9 +157,19 @@ than the number it explains.
   writing something up. That would be content, and content on this platform
   goes through an approval workflow — so it belongs with stories rather than
   bolted onto a read-only analytics layer.
-- **No cross-organisation comparison.** Every figure is scoped to the caller's
-  own tenants. Comparing bodies against each other is a different and much more
-  sensitive product than counting your own records.
+- **No cross-organisation comparison, and no way to narrow to one.** Every
+  figure is scoped to the caller's own tenants — all of them at once. Somebody
+  in two organisations sees the two counted together and cannot separate them,
+  which the dashboard says on the page rather than implying otherwise with a
+  selector that does nothing. Comparing bodies against each other is a
+  different and much more sensitive product than counting your own records.
+- **No filter by area on the screen.** The API takes a `geography_id` and the
+  dashboard never sends one, because there is no picker to choose an area
+  with. The basis carries it through the drill-down if one is supplied by
+  hand.
+- **No breakdown by area or theme.** Both are real dimensions the API offers,
+  but their buckets come back as identifiers, and a table of UUIDs answers
+  nothing. They wait for a screen that can resolve a name.
 - **Nothing is cached.** Every figure is computed on request, which is why it
   can always be reconciled. At a scale where that hurts, the answer is a cache
   with the basis as its key — not a stored number nobody can check.

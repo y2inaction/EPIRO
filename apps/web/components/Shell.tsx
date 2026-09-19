@@ -141,16 +141,30 @@ export function CardGrid({ children }: { children: React.ReactNode }) {
  * the check entirely, and a paginated route that does not exist would only
  * show up as a 404 in someone's browser.
  */
-export type PaginatedRoute = '/stories' | '/evidence' | '/questions' | '/corrections'
+export type PaginatedRoute =
+  | '/stories'
+  | '/evidence'
+  | '/questions'
+  | '/corrections'
+  | '/workspace/intelligence/records'
 
 export function Pagination({
   page,
   totalPages,
   basePath,
+  query,
 }: {
   page: number
   totalPages: number
   basePath: PaginatedRoute
+  /**
+   * What the route needs besides the page number.
+   *
+   * A drill-down page is meaningless without the basis that selected it, so
+   * paging through one has to carry that basis along. Dropping it would turn
+   * page two of "published evidence" into page two of everything.
+   */
+  query?: Record<string, string>
 }) {
   if (totalPages <= 1) {
     return null
@@ -167,7 +181,7 @@ export function Pagination({
     <nav aria-label="Pagination" className="mt-8 flex items-center justify-between gap-4">
       {page > 1 ? (
         <Link
-          href={{ pathname: basePath, query: { page: page - 1 } }}
+          href={{ pathname: basePath, query: { ...query, page: page - 1 } }}
           className={link}
           rel="prev"
         >
@@ -183,7 +197,7 @@ export function Pagination({
 
       {page < totalPages ? (
         <Link
-          href={{ pathname: basePath, query: { page: page + 1 } }}
+          href={{ pathname: basePath, query: { ...query, page: page + 1 } }}
           className={link}
           rel="next"
         >
