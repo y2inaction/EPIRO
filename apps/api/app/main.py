@@ -13,6 +13,7 @@ from app.api import (
     evidence,
     geography,
     health,
+    intelligence,
     integrity,
     missions,
     organisations,
@@ -122,6 +123,11 @@ app.include_router(
     tags=["Information integrity"],
 )
 app.include_router(missions.router, prefix="/api/v1/missions", tags=["Field operations"])
+app.include_router(
+    intelligence.router,
+    prefix="/api/v1/intelligence",
+    tags=["Intelligence"],
+)
 app.include_router(scenarios.router, prefix="/api/v1/scenarios", tags=["Readiness"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])
 app.include_router(workflows.router, prefix="/api/v1/workflows", tags=["Workflows"])

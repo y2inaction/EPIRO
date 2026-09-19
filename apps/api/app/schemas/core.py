@@ -746,6 +746,52 @@ class IntegritySignalResponse(IntegritySignalBase):
     updated_at: datetime
 
 
+class FigureBasis(BaseModel):
+    """What a figure counted, as the query that reproduces it.
+
+    Returned with every number the intelligence layer serves. Spec section 4
+    requires intelligence to be explainable and source-linked; a figure whose
+    basis can be handed straight to ``/intelligence/records`` is explainable in
+    the only way that can be checked.
+    """
+
+    measure: str
+    dimension: Optional[str] = None
+    value: Optional[str] = None
+    geography_id: Optional[uuid.UUID] = None
+
+
+class FigureResponse(BaseModel):
+    """One number, and how to see the records behind it."""
+
+    label: str
+    # Null when suppressed. A zero is a real zero — "nobody asked" and "too few
+    # asked to say" are different facts and must not render the same.
+    value: Optional[int] = None
+    suppressed: bool = False
+    basis: FigureBasis
+
+
+class IntelligenceOverview(BaseModel):
+    """The headline figures, with the rule that shaped them stated."""
+
+    figures: List[FigureResponse]
+    minimum_cell_size: int
+    # Named in the response rather than only in documentation, so a client
+    # rendering a suppressed cell can explain why rather than showing a blank.
+    suppression_note: str
+
+
+class BreakdownResponse(BaseModel):
+    """A measure counted by one of its dimensions."""
+
+    measure: str
+    dimension: str
+    figures: List[FigureResponse]
+    minimum_cell_size: int
+    suppressed_buckets: int
+
+
 class MissionMemberInput(BaseModel):
     """Somebody going on a mission."""
 

@@ -777,6 +777,94 @@ the worst thing on the platform to leave standing.
   published; withdraw instead.
 - `GET /integrity/{signal_id}/approvals` — the approval trail.
 
+### Intelligence (`/intelligence`)
+
+Spec sections 21-22. Read-only. Every figure carries the basis that produced
+it, and that basis resolves back to the records. See
+[INTELLIGENCE.md](INTELLIGENCE.md).
+
+#### Headline figures
+```
+GET /intelligence/overview?geography_id=<optional>
+Authorization: Bearer <token>
+
+Response: 200 OK
+{
+  "figures": [
+    {
+      "label": "Published evidence",
+      "value": 4,
+      "suppressed": false,
+      "basis": {"measure": "evidence", "dimension": "status", "value": "published"}
+    },
+    ...
+  ],
+  "minimum_cell_size": 5,
+  "suppression_note": "Counts of records submitted by members of the public are withheld where ..."
+}
+```
+
+#### The records behind a figure
+```
+GET /intelligence/records?measure=evidence&dimension=status&value=published
+
+Response: 200 OK
+{"total": 4, "basis": {...}, "data": [ ...the four records... ]}
+```
+
+Hand a figure's own `basis` straight back as query parameters. This is what
+makes the dashboard explainable rather than asserted: any number can be
+checked against the rows it counted.
+
+#### Breakdowns
+```
+GET /intelligence/breakdown?measure=questions&dimension=category
+
+Response: 200 OK
+{
+  "measure": "questions",
+  "dimension": "category",
+  "figures": [
+    {"label": "water", "value": 8, "suppressed": false, "basis": {...}},
+    {"label": "roads", "value": null, "suppressed": true, "basis": {...}},
+    {"label": "sanitation", "value": null, "suppressed": true, "basis": {...}}
+  ],
+  "minimum_cell_size": 5,
+  "suppressed_buckets": 2
+}
+
+400 \u2014 unknown measure, or a dimension the measure does not offer
+```
+
+Buckets of **citizen-submitted** records below the minimum cell size are
+withheld, **and so is the smallest reported bucket**, so the residual cannot be
+recovered by subtracting from the total. Evidence, projects, missions,
+integrity signals and scenarios are never suppressed: they record public works,
+not people.
+
+The 400 names the dimensions that would have worked. Dimensions are a closed
+set per measure — there is no way to group by a column that identifies a
+person.
+
+#### What can be counted
+```
+GET /intelligence/measures
+
+Response: 200 OK
+{
+  "minimum_cell_size": 5,
+  "measures": [
+    {"name": "questions", "label": "Questions from the public",
+     "dimensions": ["category", "geography_id", "language", "status"],
+     "suppressed_below_minimum": true},
+    ...
+  ]
+}
+```
+
+Served rather than documented, so a client does not hard-code a list that
+would drift from the one the server enforces.
+
 ### Field operations (`/missions`)
 
 Spec section 18. See [FIELD_OPERATIONS.md](FIELD_OPERATIONS.md), which is

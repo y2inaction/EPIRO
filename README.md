@@ -127,10 +127,15 @@ record is about information — see
 [docs/INFORMATION_INTEGRITY.md](docs/INFORMATION_INTEGRITY.md).
 
 ### Intelligence & Analytics
-- Evidence dashboard
-- Geographic distribution analysis
-- Question pattern analysis
-- Intelligence reporting
+- Counts over the platform's own records, by status, theme and area
+- **Every figure drills down to the records it counted** — no number on a
+  dashboard that cannot be checked
+- Breakdowns of citizen-submitted records suppress buckets small enough to
+  describe an individual, plus a complement so the residual cannot be
+  subtracted out
+
+Intelligence here means counting your own records, never analysing people. See
+[docs/INTELLIGENCE.md](docs/INTELLIGENCE.md).
 
 ### Organizational Readiness
 - Scenarios with ordered playbooks, each step naming who acts
@@ -162,13 +167,15 @@ sections above describe the product as a whole, and
 - `/stories/` - Public information
 - `/questions/` - Citizen questions
 - `/integrity/` - Information integrity
+- `/intelligence/` - Dashboard figures, breakdowns and drill-downs
 - `/missions/` - Field missions, safety check-ins and field capture
 - `/scenarios/` - Readiness, playbooks and drills
 - `/workflows/` - Configurable review stages
 - `/search/` - Global search
 - `/public/` - The public portal (no authentication)
 
-Not yet built, and so not listed above: intelligence reports.
+Not yet built, and so not listed above: saved intelligence reports and the
+media library.
 
 ## Development
 
