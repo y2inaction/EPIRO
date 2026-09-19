@@ -21,6 +21,7 @@ import type {
   Overview,
   RecordPage,
 } from '@/lib/intelligence'
+import type { Signal, SignalMove } from '@/lib/integrity'
 import { readToken } from '@/lib/session'
 import type { CurrentUser } from '@/lib/session'
 
@@ -523,5 +524,41 @@ export function raiseAction(payload: RaiseAction): Promise<Result<ActionRecord>>
   return request<ActionRecord>('/actions/', {
     method: 'POST',
     body: JSON.stringify(payload),
+  })
+}
+
+
+// --- Information integrity -------------------------------------------------
+
+export function listSignals(organisationId?: string): Promise<Result<Page<Signal>>> {
+  const query = new URLSearchParams({ limit: '100' })
+  if (organisationId) {
+    query.set('organisation_id', organisationId)
+  }
+  return request<Page<Signal>>(`/integrity/?${query.toString()}`)
+}
+
+export function getSignal(id: string): Promise<Result<Signal>> {
+  return request<Signal>(`/integrity/${encodeURIComponent(id)}`)
+}
+
+export function listSignalApprovals(id: string): Promise<Result<ApprovalRecord[]>> {
+  return request<ApprovalRecord[]>(`/integrity/${encodeURIComponent(id)}/approvals`)
+}
+
+/**
+ * Move a signal along.
+ *
+ * One function rather than six, because the moves differ only in the body
+ * they carry and the API refuses anything the lifecycle does not allow.
+ */
+export function moveSignal(
+  id: string,
+  move: SignalMove,
+  body: Record<string, unknown>,
+): Promise<Result<Signal>> {
+  return request<Signal>(`/integrity/${encodeURIComponent(id)}/${move}`, {
+    method: 'POST',
+    body: JSON.stringify(body),
   })
 }

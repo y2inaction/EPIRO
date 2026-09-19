@@ -169,6 +169,12 @@ export default async function WorkspacePage({
           Questions
         </Link>
         <Link
+          href="/workspace/integrity"
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          Integrity
+        </Link>
+        <Link
           href="/workspace/actions"
           className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
         >
