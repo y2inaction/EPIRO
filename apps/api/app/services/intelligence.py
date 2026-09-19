@@ -48,6 +48,7 @@ from sqlalchemy import Select, Text, func, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.models import (
+    Action,
     AuditLog,
     Evidence,
     FieldMission,
@@ -72,6 +73,7 @@ PROJECTS = "projects"
 MISSIONS = "missions"
 INTEGRITY = "integrity_signals"
 SCENARIOS = "scenarios"
+ACTIONS = "actions"
 
 
 @dataclass(frozen=True)
@@ -176,6 +178,25 @@ MEASURES: Dict[str, Measure] = {
             "geography_id": IntegritySignal.geography_id,
         },
         geography_column=IntegritySignal.geography_id,
+    ),
+    ACTIONS: Measure(
+        name=ACTIONS,
+        model=Action,
+        label="Actions",
+        entity_type="action",
+        label_column=Action.title,
+        # A decision the organisation took, not a person. The dimensions are
+        # about the action's state and where it came from; there is
+        # deliberately none that groups by owner, because a register sliced
+        # by person is a report on staff.
+        discloses_individuals=False,
+        dimensions={
+            "status": Action.status,
+            "origin_type": Action.origin_type,
+            "geography_id": Action.geography_id,
+            "thematic_area_id": Action.thematic_area_id,
+        },
+        geography_column=Action.geography_id,
     ),
     SCENARIOS: Measure(
         name=SCENARIOS,
@@ -559,6 +580,7 @@ HEADLINES: Sequence[tuple] = (
     ("Field missions", MISSIONS, None, None),
     ("Integrity signals", INTEGRITY, None, None),
     ("Readiness scenarios", SCENARIOS, None, None),
+    ("Actions", ACTIONS, None, None),
 )
 
 
@@ -580,6 +602,9 @@ UNRESOLVED: Sequence[tuple] = (
     ("Missions still in the field", MISSIONS, "status", "in_progress"),
     ("Scenarios at red", SCENARIOS, "status", "red"),
     ("Projects reported delayed", PROJECTS, "status", "delayed"),
+    ("Actions proposed and not accepted", ACTIONS, "status", "proposed"),
+    ("Actions accepted and not started", ACTIONS, "status", "accepted"),
+    ("Actions under way", ACTIONS, "status", "in_progress"),
 )
 
 
@@ -658,6 +683,7 @@ def serialiser_for(measure: Measure) -> Callable[[Any], Any]:
     Imported lazily: the schemas import the models, and the API imports both.
     """
     from app.schemas.core import (
+        ActionResponse,
         EvidenceResponse,
         FieldMissionResponse,
         IntegritySignalResponse,
@@ -666,6 +692,7 @@ def serialiser_for(measure: Measure) -> Callable[[Any], Any]:
     )
 
     return {
+        ACTIONS: ActionResponse.model_validate,
         EVIDENCE: EvidenceResponse.model_validate,
         QUESTIONS: QuestionResponse.model_validate,
         MISSIONS: FieldMissionResponse.model_validate,

@@ -59,6 +59,20 @@ INTEGRITY_ASSESSORS = frozenset({Role.INTEGRITY_ANALYST, Role.VERIFIER, Role.EVI
 # executive act, so the set that may do it is small. Rehearsing is not: the
 # people who would have to carry out a plan are the ones who can tell whether
 # it works, so conducting a drill is open wider than declaring readiness.
+# Who may raise and run actions. Deliberately the roles that already carry
+# responsibility for a response rather than a role of their own: a decision
+# register with its own private permission set drifts out of step with who is
+# actually accountable.
+ACTION_OWNERS = frozenset(
+    {
+        Role.EXECUTIVE,
+        Role.APPROVER,
+        Role.EVIDENCE_MANAGER,
+        Role.CONTENT_MANAGER,
+        Role.EDITOR,
+    }
+)
+
 READINESS_MANAGERS = frozenset({Role.EXECUTIVE, Role.ANALYST})
 # Spec section 18. Authorising a trip is a coordination act with a duty of
 # care attached, so it sits with the same people who run programmes. Going on

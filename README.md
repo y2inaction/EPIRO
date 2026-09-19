@@ -170,6 +170,7 @@ sections above describe the product as a whole, and
 - `/intelligence/` - Dashboard figures, breakdowns, filters and drill-downs
 - `/missions/` - Field missions, safety check-ins and field capture
 - `/scenarios/` - Readiness, playbooks and drills
+- `/actions/` - The decision register: what was decided, by whom, and how it ended
 - `/workflows/` - Configurable review stages
 - `/search/` - Global search
 - `/public/` - The public portal (no authentication)

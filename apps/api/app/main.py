@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import (
+    actions,
     auth,
     evidence,
     geography,
@@ -129,6 +130,7 @@ app.include_router(
     tags=["Intelligence"],
 )
 app.include_router(scenarios.router, prefix="/api/v1/scenarios", tags=["Readiness"])
+app.include_router(actions.router, prefix="/api/v1/actions", tags=["Actions"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])
 app.include_router(workflows.router, prefix="/api/v1/workflows", tags=["Workflows"])
 # No authentication: this is the portal the published information is for.

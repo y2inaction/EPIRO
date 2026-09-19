@@ -1528,6 +1528,36 @@ class DrillFinding(TimestampedModel):
     )
 
 
+class ActionOrigin(str, Enum):
+    """What prompted an action.
+
+    A closed set. An action has to come from something the platform already
+    holds — a claim assessed, a rehearsal that found a gap, a scenario, a
+    record of what happened — because an action with no origin is a plan
+    nobody can trace to a reason.
+    """
+
+    INTEGRITY_SIGNAL = "integrity_signal"
+    DRILL_FINDING = "drill_finding"
+    SCENARIO = "scenario"
+    EVIDENCE = "evidence"
+
+
+class ActionStatus(str, Enum):
+    """Where an action has got to.
+
+    ``DROPPED`` exists so that deciding not to do something is recordable.
+    Deleting the action instead would lose the decision, and the reason for
+    it, which is usually the part worth keeping.
+    """
+
+    PROPOSED = "proposed"
+    ACCEPTED = "accepted"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+    DROPPED = "dropped"
+
+
 class WorkflowDefinition(TimestampedModel):
     """An organisation's review sequence for one kind of content.
 
@@ -1653,6 +1683,93 @@ class ApprovalRecord(TimestampedModel):
         Index("idx_approval_entity", "entity_type", "entity_id"),
         Index("idx_approval_organisation_id", "organisation_id"),
         Index("idx_approval_reviewer_id", "reviewer_id"),
+    )
+
+
+class Action(TimestampedModel):
+    """A decision taken because of something the platform knows.
+
+    This is the last link in the chain the specification draws: evidence
+    becomes a signal, a signal is assessed into a finding, a finding implies
+    something for readiness, and that implication becomes an action somebody
+    owns and is answerable for.
+
+    Three rules are enforced rather than encouraged, and each exists because
+    the alternative is a register that looks like accountability without being
+    it.
+
+    **It must cite what prompted it.** ``origin_type`` and ``origin_id`` are
+    both required. An action nobody can trace back to a finding is a plan with
+    no reason, and a list of those is a wish list.
+
+    **It must have an owner.** Unowned work is not work. The column is not
+    nullable, so an action cannot be filed and left for "the team".
+
+    **Finishing or dropping it requires a written outcome.** The same rule as
+    a mission report or a withdrawal reason: the decision is the thing worth
+    keeping, and a status that changed with no account of why explains
+    nothing later.
+
+    There is deliberately no priority score computed from anything. Ranking
+    what matters is a judgement an accountable person makes, and a number
+    generated for it would launder that judgement into arithmetic.
+    """
+
+    __tablename__ = "action"
+
+    organisation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organisation.id"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Why this action follows from that finding. Required: the reasoning is
+    # the part a reviewer needs and the part that is never reconstructable.
+    rationale: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # What prompted it. Not a foreign key, because the origin may be any of
+    # several entities; the API checks the referenced record exists and is in
+    # the caller's organisation before accepting it.
+    origin_type: Mapped[ActionOrigin] = mapped_column(
+        SQLEnum(ActionOrigin, values_callable=_enum_values), nullable=False
+    )
+    origin_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+    # The readiness implication, where there is one. Optional because not
+    # every action is about a scenario — some follow from a single claim.
+    scenario_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scenario.id", ondelete="SET NULL"), nullable=True
+    )
+    geography_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("geographic_area.id"), nullable=True
+    )
+    thematic_area_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("thematic_area.id"), nullable=True
+    )
+
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=False
+    )
+    status: Mapped[ActionStatus] = mapped_column(
+        SQLEnum(ActionStatus, values_callable=_enum_values),
+        default=ActionStatus.PROPOSED,
+        nullable=False,
+    )
+    due_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # What actually happened, or why it was dropped. Required to close.
+    outcome: Mapped[Optional[str]] = mapped_column(Text)
+
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("user.id"), nullable=True
+    )
+
+    __table_args__ = (
+        Index("idx_action_organisation_id", "organisation_id"),
+        Index("idx_action_status", "status"),
+        Index("idx_action_origin", "origin_type", "origin_id"),
+        Index("idx_action_scenario_id", "scenario_id"),
+        Index("idx_action_owner_id", "owner_id"),
     )
 
 

@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models.core import (
+    ActionOrigin,
+    ActionStatus,
     ApprovalDecision,
     DrillStatus,
     EvidenceStatus,
@@ -1342,3 +1344,76 @@ class WorkflowProgressResponse(BaseModel):
     cleared: int
     total: int
     is_final_stage: bool
+
+
+class ActionBase(BaseModel):
+    """A decision taken because of something the platform knows."""
+
+    title: str = Field(..., min_length=1, max_length=255)
+    # Why this action follows from that finding. Required, because the
+    # reasoning is the part a reviewer needs and the part nobody can
+    # reconstruct afterwards.
+    rationale: str = Field(..., min_length=1, max_length=20000)
+    scenario_id: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    due_date: Optional[date] = None
+
+
+class ActionCreate(ActionBase):
+    """Raise an action against something the organisation already holds.
+
+    ``origin_type`` and ``origin_id`` are both required: an action nobody can
+    trace back to a finding is a plan with no reason. ``owner_id`` is required
+    for the same kind of reason — unowned work is not work.
+    """
+
+    organisation_id: uuid.UUID
+    origin_type: ActionOrigin
+    origin_id: uuid.UUID
+    owner_id: uuid.UUID
+
+
+class ActionUpdate(BaseModel):
+    """Revise an action that is still open.
+
+    Status is absent: it moves through the dedicated endpoints, which enforce
+    the lifecycle and require an outcome before closing.
+    """
+
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    rationale: Optional[str] = Field(None, min_length=1, max_length=20000)
+    scenario_id: Optional[uuid.UUID] = None
+    geography_id: Optional[uuid.UUID] = None
+    thematic_area_id: Optional[uuid.UUID] = None
+    due_date: Optional[date] = None
+    owner_id: Optional[uuid.UUID] = None
+
+
+class ActionOutcome(BaseModel):
+    """What happened, or why the action was dropped."""
+
+    outcome: str = Field(..., min_length=1, max_length=20000)
+
+
+class ActionResponse(ActionBase):
+    """An action, its origin, its owner and where it has got to."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    organisation_id: uuid.UUID
+    origin_type: ActionOrigin
+    origin_id: uuid.UUID
+    owner_id: uuid.UUID
+    status: ActionStatus
+    started_at: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
+    outcome: Optional[str] = None
+    created_by_id: Optional[uuid.UUID] = None
+    # Derived from the due date and the status on every read, never stored: a
+    # stored flag is wrong from the moment the clock passes it, and the thing
+    # least likely to happen to a neglected action is an update.
+    overdue: bool = False
+    created_at: datetime
+    updated_at: datetime
