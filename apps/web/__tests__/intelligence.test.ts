@@ -1,4 +1,5 @@
 import {
+  actionLabel,
   barPercent,
   barScale,
   basisSentence,
@@ -16,6 +17,7 @@ import {
   recordsQuery,
   suppressedShort,
   suppressesSmallBuckets,
+  summariseFields,
   suppressionReason,
   unsupportedFilters,
   type Figure,
@@ -260,6 +262,60 @@ describe('filterLabel', () => {
   it('names a filter the way a person would', () => {
     expect(filterLabel('thematic_area_id')).toBe('Theme')
     expect(filterLabel('since')).toBe('Recorded from')
+  })
+})
+
+describe('actionLabel', () => {
+  it('reads an action the way a person would say it', () => {
+    expect(actionLabel('stage_cleared')).toBe('stage cleared')
+  })
+
+  it('drops the namespace on a prefixed action', () => {
+    expect(actionLabel('auth.password_changed')).toBe('password changed')
+  })
+})
+
+describe('summariseFields', () => {
+  it('says what moved and where it moved to', () => {
+    expect(
+      summariseFields([
+        { field: 'verification_status', from: 'unverified', to: 'verified' },
+      ]),
+    ).toBe('verification status: unverified → verified')
+  })
+
+  it('names a value that really was empty before', () => {
+    expect(
+      summariseFields([
+        { field: 'response', from: null, to: 'It was fixed.', had_previous: true },
+      ]),
+    ).toBe('response: not set → It was fixed.')
+  })
+
+  it('shows no left-hand side when the trail never recorded one', () => {
+    // The transition endpoints record what a record became and not what it
+    // was. Writing "not set → verified" would claim the field had been empty,
+    // which the trail does not say and which is usually untrue.
+    expect(
+      summariseFields([
+        { field: 'verification_status', to: 'verified', had_previous: false },
+      ]),
+    ).toBe('verification status → verified')
+  })
+
+  it('returns nothing for a change that moved no field', () => {
+    // A check-in records that something happened, not that a value moved.
+    // An empty bracket would read as a sentence that trails off.
+    expect(summariseFields([])).toBe('')
+  })
+
+  it('joins several fields rather than showing only the first', () => {
+    expect(
+      summariseFields([
+        { field: 'status', from: 'draft', to: 'published' },
+        { field: 'version', from: 1, to: 2 },
+      ]),
+    ).toBe('status: draft → published · version: 1 → 2')
   })
 })
 

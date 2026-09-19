@@ -13,6 +13,7 @@
 import { activeFilters, recordsQuery } from '@/lib/intelligence'
 import type {
   Breakdown,
+  ChangeFeed,
   FigureBasis,
   FilterSet,
   LabelMap,
@@ -371,6 +372,30 @@ export function getRecords(
   params.set('limit', String(pageSize))
 
   return request<RecordPage>(`/intelligence/records?${params.toString()}`)
+}
+
+/**
+ * What changed, when, to which record, and by whom.
+ *
+ * Note the date range means something different here — it narrows when the
+ * change happened, not when the record was created. The response says so in
+ * its own `date_note`, which the page shows rather than paraphrasing.
+ */
+export function getChanges(
+  measure: string,
+  filters: FilterSet = {},
+  action?: string,
+  page = 1,
+  pageSize = 25,
+): Promise<Result<ChangeFeed>> {
+  const params = new URLSearchParams({ measure, ...activeFilters(filters) })
+  if (action) {
+    params.set('action', action)
+  }
+  params.set('skip', String((Math.max(1, page) - 1) * pageSize))
+  params.set('limit', String(pageSize))
+
+  return request<ChangeFeed>(`/intelligence/changes?${params.toString()}`)
 }
 
 export function listMeasures(): Promise<Result<MeasureCatalogue>> {

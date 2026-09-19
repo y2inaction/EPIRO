@@ -26,6 +26,8 @@ export function FilterBar({
   themes,
   statuses,
   verificationStates,
+  hidden,
+  dateNote,
 }: {
   action: SectionHref
   filters: FilterSet
@@ -37,6 +39,23 @@ export function FilterBar({
   /** Status values this measure actually uses, from its own breakdown. */
   statuses?: string[]
   verificationStates?: string[]
+  /**
+   * Query parameters that are not filters but must survive the submit.
+   *
+   * A GET form sends its fields and nothing else, so anything already in the
+   * URL that the bar does not render would be dropped — which on the changes
+   * feed would silently switch the reader back to a different measure.
+   */
+  hidden?: Record<string, string>
+  /**
+   * What the date range means on this page.
+   *
+   * Overridable because it is not the same everywhere: on the changes feed
+   * the range narrows when the change happened, not when the record was
+   * created. A control that states the wrong meaning is worse than one that
+   * states none, and the bar was doing exactly that.
+   */
+  dateNote?: string
 }) {
   const offers = (name: string) => available.includes(name)
   const anySet = Object.values(filters).some(Boolean)
@@ -47,6 +66,10 @@ export function FilterBar({
       method="get"
       className="mb-8 rounded-xl border border-slate-200 p-4 dark:border-slate-800"
     >
+      {Object.entries(hidden ?? {}).map(([name, value]) => (
+        <input key={name} type="hidden" name={name} value={value} />
+      ))}
+
       <div className="flex flex-wrap items-end gap-4">
         {offers('organisation_id') && organisations.length > 1 ? (
           <Choice
@@ -113,7 +136,7 @@ export function FilterBar({
 
         {anySet ? (
           <Link
-            href={action}
+            href={{ pathname: action, query: hidden ?? {} }}
             className={
               'text-sm text-slate-700 underline-offset-4 hover:underline ' +
               'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ' +
@@ -130,7 +153,8 @@ export function FilterBar({
         // reader filtering to September and seeing a June handover counted
         // would otherwise think the filter was broken.
         <p className="mt-3 text-xs text-slate-600 dark:text-slate-400">
-          Dates are when the platform recorded something, not when it happened.
+          {dateNote ??
+            'Dates are when the platform recorded something, not when it happened.'}
         </p>
       ) : null}
     </form>

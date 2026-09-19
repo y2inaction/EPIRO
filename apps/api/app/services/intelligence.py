@@ -48,12 +48,14 @@ from sqlalchemy import Select, Text, func, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.models import (
+    AuditLog,
     Evidence,
     FieldMission,
     IntegritySignal,
     Project,
     Question,
     Scenario,
+    User,
 )
 from app.services.geography import descendant_ids
 
@@ -85,6 +87,11 @@ class Measure:
     model: Any
     label: str
     discloses_individuals: bool
+    # What the audit trail calls this entity, and the column that names one
+    # record. Together these turn a trail of identifiers into a readable
+    # account of what changed.
+    entity_type: str = ""
+    label_column: Optional[InstrumentedAttribute] = None
     # Dimension name to the column it groups by. A closed set: a caller cannot
     # ask for a breakdown by an arbitrary column, so a dimension can never be
     # a route to a field that was never meant to be aggregated.
@@ -97,6 +104,8 @@ MEASURES: Dict[str, Measure] = {
         name=EVIDENCE,
         model=Evidence,
         label="Evidence records",
+        entity_type="evidence",
+        label_column=Evidence.title,
         # Evidence describes public works and public spending, not people.
         discloses_individuals=False,
         dimensions={
@@ -111,6 +120,8 @@ MEASURES: Dict[str, Measure] = {
         name=QUESTIONS,
         model=Question,
         label="Questions from the public",
+        entity_type="question",
+        label_column=Question.question_text,
         # Submitted by members of the public. Every breakdown is suppressed
         # below the threshold.
         discloses_individuals=True,
@@ -126,6 +137,8 @@ MEASURES: Dict[str, Measure] = {
         name=PROJECTS,
         model=Project,
         label="Projects",
+        entity_type="project",
+        label_column=Project.name,
         discloses_individuals=False,
         dimensions={
             "status": Project.status,
@@ -138,6 +151,8 @@ MEASURES: Dict[str, Measure] = {
         name=MISSIONS,
         model=FieldMission,
         label="Field missions",
+        entity_type="field_mission",
+        label_column=FieldMission.title,
         discloses_individuals=False,
         dimensions={
             "status": FieldMission.status,
@@ -150,6 +165,8 @@ MEASURES: Dict[str, Measure] = {
         name=INTEGRITY,
         model=IntegritySignal,
         label="Information integrity signals",
+        entity_type="integrity_signal",
+        label_column=IntegritySignal.claim,
         # A signal is about a circulating claim, not about whoever repeated it.
         discloses_individuals=False,
         dimensions={
@@ -164,6 +181,8 @@ MEASURES: Dict[str, Measure] = {
         name=SCENARIOS,
         model=Scenario,
         label="Readiness scenarios",
+        entity_type="scenario",
+        label_column=Scenario.name,
         discloses_individuals=False,
         dimensions={
             "status": Scenario.status,
@@ -663,3 +682,203 @@ def _project_summary(item: Any) -> Dict[str, Any]:
         "code": item.code,
         "status": item.status.value,
     }
+
+
+# --- Temporal intelligence -------------------------------------------------
+#
+# The questions a dashboard of totals cannot answer: what changed, when, where,
+# which evidence caused it, and who was accountable.
+#
+# None of this is new data. Spec section 39 already requires every state
+# transition to write an audit entry, and it does. What was missing was a way
+# to read that trail as intelligence rather than as forensics — filtered the
+# same way everything else here is filtered.
+
+
+def _record_scope(
+    db: Session,
+    measure: Measure,
+    filters: Filters,
+    organisation_ids: Sequence[uuid.UUID],
+    is_platform_admin: bool,
+) -> Select:
+    """The records a change has to be about, as a subquery of ids.
+
+    Every record-level filter is applied here rather than to the trail, which
+    is what lets "changes in Kano State" work at all: an audit entry carries
+    no area of its own, only the record it describes.
+    """
+    from dataclasses import replace
+
+    # The dates mean something different on a change and are applied to the
+    # trail instead; see ``changes``.
+    without_dates = replace(filters, since=None, until=None)
+
+    ids = select(measure.model.id)
+    ids = scoped(ids, measure, organisation_ids, is_platform_admin)
+    return apply_filters(ids, measure, without_dates, db)
+
+
+def _within_window(statement: Select, filters: Filters) -> Select:
+    """Narrow a trail to when the changes happened.
+
+    **This is the one place the date range means something different.**
+    Everywhere else it narrows when a record was created; here it narrows when
+    the change occurred, because "what changed in September" is a question
+    about the change and not about the record's age. A record created in June
+    and verified in September is a September change.
+    """
+    if filters.since is not None:
+        statement = statement.where(
+            AuditLog.created_at >= datetime.combine(filters.since, time.min)
+        )
+    if filters.until is not None:
+        statement = statement.where(
+            AuditLog.created_at < datetime.combine(filters.until + timedelta(days=1), time.min)
+        )
+    return statement
+
+
+def _trail(
+    db: Session,
+    measure: Measure,
+    filters: Filters,
+    organisation_ids: Sequence[uuid.UUID],
+    is_platform_admin: bool,
+    action: Optional[str],
+) -> Select:
+    """Audit entries about this measure's records, narrowed by the filters."""
+    statement = select(AuditLog).where(
+        AuditLog.entity_type == measure.entity_type,
+        AuditLog.entity_id.in_(
+            _record_scope(db, measure, filters, organisation_ids, is_platform_admin)
+        ),
+    )
+    statement = _within_window(statement, filters)
+
+    if action is not None:
+        statement = statement.where(AuditLog.action == action)
+
+    return statement
+
+
+def count_changes(
+    db: Session,
+    measure: Measure,
+    filters: Filters,
+    organisation_ids: Sequence[uuid.UUID],
+    is_platform_admin: bool,
+    action: Optional[str] = None,
+) -> int:
+    """How many changes this basis covers."""
+    trail = _trail(db, measure, filters, organisation_ids, is_platform_admin, action).subquery()
+    return int(db.execute(select(func.count()).select_from(trail)).scalar_one())
+
+
+def changes(
+    db: Session,
+    measure: Measure,
+    filters: Filters,
+    organisation_ids: Sequence[uuid.UUID],
+    is_platform_admin: bool,
+    action: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 50,
+) -> List[Any]:
+    """What changed, most recent first."""
+    statement = _trail(db, measure, filters, organisation_ids, is_platform_admin, action)
+    statement = statement.order_by(AuditLog.created_at.desc()).offset(skip).limit(limit)
+    return list(db.execute(statement).scalars())
+
+
+def changes_by_action(
+    db: Session,
+    measure: Measure,
+    filters: Filters,
+    organisation_ids: Sequence[uuid.UUID],
+    is_platform_admin: bool,
+) -> List[Figure]:
+    """What kinds of change happened, largest first.
+
+    Grouped by action and by nothing else. Grouping the trail by the person
+    who acted would turn an accountability record into a productivity report,
+    and the prohibition on profiling in spec section 4 is not only about
+    citizens.
+    """
+    trail = _trail(db, measure, filters, organisation_ids, is_platform_admin, None).subquery()
+    statement = select(trail.c.action, func.count()).group_by(trail.c.action)
+
+    figures = [
+        Figure(
+            label=str(action),
+            value=int(total),
+            # A change figure resolves back through the change feed rather
+            # than the record list: the same explainability, against the trail
+            # it counted.
+            basis=Basis(measure=measure.name, dimension="action", value=str(action)),
+        )
+        for action, total in db.execute(statement).all()
+    ]
+
+    figures.sort(key=lambda f: (-(f.value or 0), f.label))
+    return figures
+
+
+def names_of(db: Session, user_ids: Sequence[uuid.UUID]) -> Dict[uuid.UUID, str]:
+    """Who the actors on a page of changes were.
+
+    Resolved per entry, which is accountability: spec section 39 exists so a
+    reviewer can be answered for. It is deliberately **not** offered as a
+    filter or a grouping, because that is the same fact turned into a league
+    table of staff.
+    """
+    if not user_ids:
+        return {}
+
+    rows = db.execute(
+        select(User.id, User.first_name, User.last_name).where(User.id.in_(set(user_ids)))
+    ).all()
+    return {row[0]: f"{row[1]} {row[2]}".strip() for row in rows}
+
+
+def titles_of(
+    db: Session, measure: Measure, record_ids: Sequence[uuid.UUID]
+) -> Dict[uuid.UUID, str]:
+    """What the records on a page of changes are called."""
+    if not record_ids or measure.label_column is None:
+        return {}
+
+    rows = db.execute(
+        select(measure.model.id, measure.label_column).where(measure.model.id.in_(set(record_ids)))
+    ).all()
+    return {row[0]: str(row[1]) if row[1] is not None else "" for row in rows}
+
+
+def fields_changed(entry: Any) -> List[Dict[str, Any]]:
+    """Which fields moved, and from what to what.
+
+    The audit trail stores whole snapshots. A reader wants the difference, and
+    computing it here rather than in the client means every client gets the
+    same answer.
+
+    ``had_previous`` exists because of a real gap rather than a hypothetical
+    one. The transition endpoints record what a record *became* and not what
+    it was, so for those entries the prior value is **unrecorded**, which is a
+    different fact from the prior value having been empty. Reporting the
+    absent key as ``null`` made the feed say "verification status: not set →
+    verified" about a record that had been sitting at "unverified" — an
+    assertion the trail never made. See docs/STATUS.md.
+    """
+    old = entry.old_values or {}
+    new = entry.new_values or {}
+
+    return [
+        {
+            "field": key,
+            "from": old.get(key),
+            "to": new.get(key),
+            "had_previous": key in old,
+        }
+        for key in sorted(set(old) | set(new))
+        if not (key in old and old.get(key) == new.get(key))
+    ]

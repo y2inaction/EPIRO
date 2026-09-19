@@ -26,6 +26,7 @@ const TRAVELS = ['organisation_id', 'geography_id', 'since', 'until']
 export const SECTIONS = [
   { href: '/workspace/intelligence', label: 'Overview', measure: null },
   { href: '/workspace/intelligence/unresolved', label: 'Unresolved', measure: null },
+  { href: '/workspace/intelligence/changes', label: 'Changes', measure: null },
   { href: '/workspace/intelligence/evidence', label: 'Evidence', measure: 'evidence' },
   { href: '/workspace/intelligence/questions', label: 'Questions', measure: 'questions' },
   { href: '/workspace/intelligence/integrity', label: 'Integrity', measure: 'integrity_signals' },

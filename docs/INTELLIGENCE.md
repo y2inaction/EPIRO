@@ -134,7 +134,52 @@ records waiting. A broader definition ("anything not published") would read
 better in a heading and could not be checked against its own rows, and a
 figure nobody can check is the thing this layer refuses to serve.
 
-## 5. What cannot be asked
+## 5. What changed, and when
+
+`/intelligence/changes` answers the questions a dashboard of totals cannot.
+None of it is new data: spec section 39 already requires every state
+transition to write an audit entry, and it does. What was missing was a way to
+read that trail as intelligence rather than as forensics.
+
+| Question | Where the answer comes from |
+|---|---|
+| What changed? | the action, and the fields that moved |
+| When did it change? | the entry's own timestamp |
+| Where did it change? | the record the change was about |
+| Which evidence caused it? | the evidence the entry cited |
+| Who verified it? | the actor on the entry |
+| What remains unresolved? | `/intelligence/unresolved` (§4) |
+
+**The feed takes a measure**, because an audit entry carries no area or theme
+of its own. "Changes in Kano State" is only answerable by resolving the change
+through the record it was about, which is exactly what the feed does: every
+record-level filter narrows the records, and the date range narrows the trail.
+
+**The date range means something different here**, and this is the one place
+it does. Everywhere else it narrows when a record was created; on this feed it
+narrows when the change happened. A record added in June and verified in
+September is a September change. The filter bar says so at the control rather
+than in a footnote — an earlier version printed the wrong meaning there and
+then contradicted itself two lines below.
+
+**Who acted is named per entry and nowhere else.** That is what an audit trail
+is for: a decision somebody has to answer for. It is deliberately not a filter
+and not a grouping — the summary groups by action and by nothing else — because
+the same fact aggregated over people is a productivity report on staff.
+
+### What the trail cannot say yet
+
+The transition endpoints record what a record **became** and not what it was:
+`new_values` is written, `old_values` usually is not. So for those entries the
+prior value is *unrecorded*, which is a different fact from the prior value
+having been empty. The feed reports that distinction (`had_previous`) and
+renders `verification status → verified` rather than claiming the field had
+been unset — because an earlier version said "not set → verified" about a
+record that had been sitting at "unverified", an assertion the trail never
+made. **Capturing the prior state in the transition endpoints is the fix, and
+it is not done.**
+
+## 6. What cannot be asked
 
 Dimensions are a **closed set** per measure. A caller cannot group by an
 arbitrary column, so no dimension can become a route to a field nobody meant to
@@ -162,7 +207,7 @@ rather than who let it down, and for mission check-ins, which record a state
 rather than a position. A test asserts no filter ending in `_by` and no filter
 from a list of person-shaped names has appeared.
 
-## 6. Why the drill-down is not suppressed
+## 7. Why the drill-down is not suppressed
 
 `/intelligence/records` returns the rows without applying the threshold, and
 that is correct rather than an oversight.
@@ -176,13 +221,14 @@ second access control over records their custodians can already open.
 A drill-down is scoped exactly as the figure was, so it can never reach further
 than the number it explains.
 
-## 7. The dashboard
+## 8. The dashboard
 
 The hub is `/workspace/intelligence`, with a section per measure:
 
 ```
 /workspace/intelligence            Overview — the headline figures
         ├── /unresolved            What is still waiting
+        ├── /changes               What changed, when, and by whom
         ├── /evidence              Evidence records, every dimension
         ├── /questions             Questions from the public
         ├── /integrity             Information integrity signals
@@ -216,7 +262,7 @@ and it works with scripting off. Three consequences worth stating:
 **A section has no total at the top, deliberately.** A total is a summary
 figure, and the overview already serves those with suppression applied. The
 only other place to get one is the drill-down, which is unsuppressed by design
-(see §6) — so putting that number at the head of a summary page would place an
+(see §7) — so putting that number at the head of a summary page would place an
 unsuppressed aggregate exactly where the threshold exists to prevent one.
 
 Two decisions in the rendering are worth stating because they are where the
@@ -255,7 +301,7 @@ Two smaller consequences of the same rule:
   why that is not a contradiction: the threshold protects the shape of a
   published summary, not an organisation's records from its own staff.
 
-## 8. What is not built
+## 9. What is not built
 
 - **No time series.** Every figure is a count as of now. Trend over time would
   need either a period filter on each measure or stored snapshots, and neither
@@ -268,12 +314,11 @@ Two smaller consequences of the same rule:
   own tenants, and the organisation filter only ever narrows within them.
   Comparing bodies against each other is a different and much more sensitive
   product than counting your own records.
-- **No change over time, only a window.** A date range answers "how many in
-  September". It does not answer "what changed": that needs either two windows
-  compared or the audit trail read as a feed, and neither is built. The trail
-  itself exists — every state transition writes an entry with its actor and
-  timestamp — so the question is answerable per record on its own approval
-  trail, just not in aggregate here.
+- **No comparison between two periods.** The changes feed says what happened
+  in a window; it does not say "12% more than last month". Indexing one window
+  against another is a different feature and is not built.
+- **The prior value of a transition is not recorded.** See §5: the feed can
+  say what a record became, not always what it was.
 - **The name lookup is capped at one page.** Breakdowns by area and theme
   resolve their buckets against the first 1000 areas and themes, which is the
   API's own maximum page. Past that a bucket shows its identifier and the

@@ -24,6 +24,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.models import (
     EvidenceStatus,
     GeographyLevel,
@@ -671,3 +672,251 @@ class TestNoFilterNarrowsByAPerson:
                     f"'{measure.name}' offers a filter named '{name}', which "
                     "narrows aggregates by a person"
                 )
+
+
+# --- Temporal intelligence -------------------------------------------------
+
+
+class TestChanges:
+    """What changed, when, where, on what evidence, and by whom."""
+
+    def test_it_reports_what_changed_and_who_did_it(
+        self, client: TestClient, db: Session, analyst: User, organisation: Organisation
+    ):
+        record = make_evidence(db, organisation)
+        audit.record(
+            db,
+            action=audit.VERIFIED,
+            entity_type="evidence",
+            entity_id=record.id,
+            user=analyst,
+            organisation_id=organisation.id,
+            evidence_id=record.id,
+            old_values={"verification_status": "unverified"},
+            new_values={"verification_status": "verified"},
+        )
+
+        feed = client.get(
+            f"{BASE}/changes", params={"measure": "evidence"}, headers=auth_header(analyst)
+        ).json()
+
+        assert feed["total"] == 1
+        entry = feed["data"][0]
+        assert entry["action"] == "verified"
+        assert entry["entity_label"] == record.title
+        assert entry["actor"] == f"{analyst.first_name} {analyst.last_name}"
+        assert entry["evidence_id"] == str(record.id)
+        assert entry["changed"] == [
+            {
+                "field": "verification_status",
+                "from": "unverified",
+                "to": "verified",
+                "had_previous": True,
+            }
+        ]
+
+    def test_the_date_range_narrows_when_the_change_happened(
+        self, client: TestClient, db: Session, analyst: User, organisation: Organisation
+    ):
+        """Not when the record was created, which is what it means everywhere else.
+
+        A record added in June and verified in September is a September
+        change. Applying the record's own date here would answer a different
+        question than the one the feed is for.
+        """
+        record = make_evidence(db, organisation)
+        entry = audit.record(
+            db,
+            action=audit.VERIFIED,
+            entity_type="evidence",
+            entity_id=record.id,
+            user=analyst,
+            organisation_id=organisation.id,
+        )
+        entry.created_at = entry.created_at + timedelta(days=30)
+        db.commit()
+
+        when = entry.created_at.date()
+
+        inside = client.get(
+            f"{BASE}/changes",
+            params={"measure": "evidence", "since": str(when), "until": str(when)},
+            headers=auth_header(analyst),
+        ).json()
+        before = client.get(
+            f"{BASE}/changes",
+            params={"measure": "evidence", "until": str(when - timedelta(days=1))},
+            headers=auth_header(analyst),
+        ).json()
+
+        assert inside["total"] == 1
+        assert before["total"] == 0
+
+    def test_where_it_changed_is_resolved_through_the_record(
+        self, client: TestClient, db: Session, analyst: User, organisation: Organisation
+    ):
+        """An audit entry carries no area of its own."""
+        inside = make_area(db, GeographyLevel.STATE)
+        outside = make_area(db, GeographyLevel.STATE)
+        here = make_evidence(db, organisation, geography_id=inside.id)
+        there = make_evidence(db, organisation, geography_id=outside.id)
+
+        for record in (here, there):
+            audit.record(
+                db,
+                action=audit.APPROVED,
+                entity_type="evidence",
+                entity_id=record.id,
+                user=analyst,
+                organisation_id=organisation.id,
+            )
+
+        feed = client.get(
+            f"{BASE}/changes",
+            params={"measure": "evidence", "geography_id": str(inside.id)},
+            headers=auth_header(analyst),
+        ).json()
+
+        assert feed["total"] == 1
+        assert feed["data"][0]["entity_id"] == str(here.id)
+
+    def test_the_summary_by_action_reconciles_with_the_feed(
+        self, client: TestClient, db: Session, analyst: User, organisation: Organisation
+    ):
+        """A change figure has to be checkable, like every other figure here."""
+        record = make_evidence(db, organisation)
+        for action in (audit.VERIFIED, audit.APPROVED, audit.APPROVED):
+            audit.record(
+                db,
+                action=action,
+                entity_type="evidence",
+                entity_id=record.id,
+                user=analyst,
+                organisation_id=organisation.id,
+            )
+
+        feed = client.get(
+            f"{BASE}/changes", params={"measure": "evidence"}, headers=auth_header(analyst)
+        ).json()
+
+        for figure in feed["by_action"]:
+            narrowed = client.get(
+                f"{BASE}/changes",
+                params={"measure": "evidence", "action": figure["basis"]["value"]},
+                headers=auth_header(analyst),
+            ).json()
+            assert narrowed["total"] == figure["value"], (
+                f"'{figure['label']}' said {figure['value']} but narrowing to it "
+                f"returned {narrowed['total']}"
+            )
+
+    def test_it_never_reaches_another_organisation(
+        self, client: TestClient, db: Session, organisation: Organisation
+    ):
+        other = make_organisation(db)
+        theirs = make_evidence(db, other)
+        stranger = member(db, other, Role.ANALYST)
+        audit.record(
+            db,
+            action=audit.APPROVED,
+            entity_type="evidence",
+            entity_id=theirs.id,
+            user=stranger,
+            organisation_id=other.id,
+        )
+        mine = member(db, organisation, Role.ANALYST)
+
+        feed = client.get(
+            f"{BASE}/changes", params={"measure": "evidence"}, headers=auth_header(mine)
+        ).json()
+
+        assert feed["total"] == 0
+
+    def test_the_feed_cannot_be_narrowed_or_grouped_by_a_person(
+        self, client: TestClient, db: Session, analyst: User, organisation: Organisation
+    ):
+        """Naming the actor per entry is accountability. Aggregating is not.
+
+        Spec section 39 requires a trail that can answer for a decision, so an
+        entry names who acted. Turning that into a filter or a grouping would
+        make it a productivity report on staff, which section 4's prohibition
+        on profiling rules out just as it does for citizens.
+        """
+        record = make_evidence(db, organisation)
+        audit.record(
+            db,
+            action=audit.APPROVED,
+            entity_type="evidence",
+            entity_id=record.id,
+            user=analyst,
+            organisation_id=organisation.id,
+        )
+
+        # An actor filter is not accepted: it is ignored as an unknown query
+        # parameter rather than narrowing anything.
+        both = client.get(
+            f"{BASE}/changes",
+            params={"measure": "evidence", "user_id": str(uuid.uuid4())},
+            headers=auth_header(analyst),
+        ).json()
+        assert both["total"] == 1
+
+        feed = client.get(
+            f"{BASE}/changes", params={"measure": "evidence"}, headers=auth_header(analyst)
+        ).json()
+        for figure in feed["by_action"]:
+            assert figure["basis"]["dimension"] == "action"
+
+    def test_an_unrecorded_previous_value_is_not_reported_as_empty(
+        self, client: TestClient, db: Session, analyst: User, organisation: Organisation
+    ):
+        """The transition endpoints record what a record became, not what it was.
+
+        Reporting the absent key as null made the feed say "verification
+        status: not set → verified" about a record that had been sitting at
+        "unverified" — an assertion the trail never made.
+        """
+        record = make_evidence(db, organisation)
+        audit.record(
+            db,
+            action=audit.VERIFIED,
+            entity_type="evidence",
+            entity_id=record.id,
+            user=analyst,
+            organisation_id=organisation.id,
+            new_values={"verification_status": "verified"},
+        )
+
+        feed = client.get(
+            f"{BASE}/changes", params={"measure": "evidence"}, headers=auth_header(analyst)
+        ).json()
+
+        assert feed["data"][0]["changed"] == [
+            {
+                "field": "verification_status",
+                "from": None,
+                "to": "verified",
+                "had_previous": False,
+            }
+        ]
+
+    def test_a_previous_value_that_really_was_empty_says_so(
+        self, client: TestClient, db: Session, analyst: User, organisation: Organisation
+    ):
+        record = make_evidence(db, organisation)
+        audit.record(
+            db,
+            action=audit.UPDATED,
+            entity_type="evidence",
+            entity_id=record.id,
+            user=analyst,
+            organisation_id=organisation.id,
+            old_values={"outcome": None},
+            new_values={"outcome": "Twelve boreholes in service."},
+        )
+
+        feed = client.get(
+            f"{BASE}/changes", params={"measure": "evidence"}, headers=auth_header(analyst)
+        ).json()
+
+        assert feed["data"][0]["changed"][0]["had_previous"] is True

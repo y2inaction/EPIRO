@@ -3,7 +3,7 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
@@ -796,6 +796,61 @@ class IntelligenceOverview(BaseModel):
     # indistinguishable from a figure that counted nothing, and the two mean
     # opposite things.
     excluded_measures: List[str] = []
+
+
+class FieldChange(BaseModel):
+    """One field that moved, and where it moved from and to.
+
+    ``had_previous`` is false where the trail recorded only what the field
+    became. "The previous value was empty" and "the previous value was not
+    written down" are different facts, and a client that renders them the same
+    puts an assertion in the trail's mouth that the trail never made.
+    """
+
+    field: str
+    from_: Optional[Any] = Field(None, alias="from")
+    to: Optional[Any] = None
+    had_previous: bool = True
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ChangeEntry(BaseModel):
+    """One recorded change: what, when, to which record, and by whom.
+
+    ``actor`` names a person, and that is accountability rather than
+    monitoring: spec section 39 requires every state transition to be
+    answerable for, and a trail that cannot say who acted does not do that.
+    The line this layer holds is that the same fact is never offered as a
+    filter or a grouping — see the intelligence API module docstring.
+    """
+
+    id: uuid.UUID
+    action: str
+    at: datetime
+    entity_type: str
+    entity_id: Optional[uuid.UUID] = None
+    entity_label: Optional[str] = None
+    actor: Optional[str] = None
+    # The evidence the change rests on, where the change cited any.
+    evidence_id: Optional[uuid.UUID] = None
+    changed: List[FieldChange] = []
+
+
+class ChangeFeed(BaseModel):
+    """What changed about a measure's records, and what kinds of change."""
+
+    measure: str
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    basis: Dict[str, Any]
+    by_action: List[FigureResponse]
+    data: List[ChangeEntry]
+    # Said in the response because it is the one place the date range means
+    # something different from everywhere else on this dashboard.
+    date_note: str
 
 
 class BreakdownResponse(BaseModel):

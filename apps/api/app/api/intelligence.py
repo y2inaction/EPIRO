@@ -42,6 +42,9 @@ from app.authorization import AccessControl, get_access
 from app.database import get_db
 from app.schemas.core import (
     BreakdownResponse,
+    ChangeEntry,
+    ChangeFeed,
+    FieldChange,
     FigureBasis,
     FigureResponse,
     IntelligenceOverview,
@@ -250,6 +253,99 @@ async def get_records(
         "data": data,
     }
     return result
+
+
+CHANGE_DATE_NOTE = (
+    "On this feed a date range narrows when the change happened, not when the "
+    "record was created. A record added in June and verified in September is a "
+    "September change. Every other filter narrows the record the change was "
+    "about."
+)
+
+
+@router.get("/changes", response_model=ChangeFeed)
+async def get_changes(
+    measure: str = Query(..., description="Which records' changes to read"),
+    action: Optional[str] = Query(None, description="One kind of change, e.g. verified"),
+    filters: intelligence.Filters = Depends(_filters),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    access: AccessControl = Depends(get_access),
+):
+    """What changed, when, to which record, and by whom.
+
+    The questions a dashboard of totals cannot answer. None of this is new
+    data: spec section 39 already requires every state transition to write an
+    audit entry. What was missing was a way to read that trail as
+    intelligence — narrowed the same way everything else here is narrowed.
+
+    **Where a change happened** is resolved through the record it was about,
+    because an audit entry carries no area of its own. That is why the feed
+    takes a measure: "changes in Kano State" is only answerable against
+    records that have an area.
+
+    **Who acted** is named per entry and nowhere else. That is accountability,
+    which is the whole point of section 39's trail. It is deliberately not a
+    filter and not a grouping: the same fact aggregated over people is a
+    productivity report, and section 4's prohibition on profiling is not only
+    about citizens.
+    """
+    spec = intelligence.require_measure(measure)
+    intelligence.require_filters(spec, filters)
+
+    organisation_ids = sorted(access.organisation_ids)
+    total = intelligence.count_changes(
+        db, spec, filters, organisation_ids, access.is_platform_admin, action
+    )
+    entries = intelligence.changes(
+        db, spec, filters, organisation_ids, access.is_platform_admin, action, skip, limit
+    )
+
+    actors = intelligence.names_of(db, [e.user_id for e in entries if e.user_id is not None])
+    titles = intelligence.titles_of(
+        db, spec, [e.entity_id for e in entries if e.entity_id is not None]
+    )
+
+    by_action = intelligence.changes_by_action(
+        db, spec, filters, organisation_ids, access.is_platform_admin
+    )
+
+    basis: Dict[str, Any] = {"measure": measure, **filters.as_dict()}
+    if action is not None:
+        basis["action"] = action
+
+    return ChangeFeed(
+        measure=measure,
+        total=total,
+        page=skip // limit + 1,
+        page_size=limit,
+        total_pages=(total + limit - 1) // limit,
+        basis=basis,
+        by_action=[_figure(f, filters) for f in by_action],
+        data=[
+            ChangeEntry(
+                id=entry.id,
+                action=entry.action,
+                at=entry.created_at,
+                entity_type=entry.entity_type,
+                entity_id=entry.entity_id,
+                entity_label=titles.get(entry.entity_id) if entry.entity_id else None,
+                actor=actors.get(entry.user_id) if entry.user_id else None,
+                evidence_id=entry.evidence_id,
+                changed=[
+                    FieldChange(
+                        field=c["field"],
+                        had_previous=c["had_previous"],
+                        **{"from": c["from"], "to": c["to"]},
+                    )
+                    for c in intelligence.fields_changed(entry)
+                ],
+            )
+            for entry in entries
+        ],
+        date_note=CHANGE_DATE_NOTE,
+    )
 
 
 @router.get("/measures", response_model=dict)

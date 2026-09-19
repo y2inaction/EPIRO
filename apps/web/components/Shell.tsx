@@ -147,6 +147,7 @@ export type PaginatedRoute =
   | '/questions'
   | '/corrections'
   | '/workspace/intelligence/records'
+  | '/workspace/intelligence/changes'
 
 export function Pagination({
   page,

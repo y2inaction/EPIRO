@@ -91,6 +91,85 @@ export interface RecordPage {
   data: Record<string, unknown>[]
 }
 
+/**
+ * One field that moved, and where it moved from and to.
+ *
+ * `had_previous` is false where the trail recorded only what the field
+ * became. "It was empty" and "nobody wrote down what it was" are different
+ * facts, and rendering them the same puts an assertion in the trail's mouth.
+ */
+export interface FieldChange {
+  field: string
+  from?: unknown
+  to?: unknown
+  had_previous?: boolean
+}
+
+/** One recorded change: what, when, to which record, and by whom. */
+export interface ChangeEntry {
+  id: string
+  action: string
+  at: string
+  entity_type: string
+  entity_id: string | null
+  entity_label: string | null
+  actor: string | null
+  evidence_id: string | null
+  changed: FieldChange[]
+}
+
+export interface ChangeFeed {
+  measure: string
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+  basis: FigureBasis
+  by_action: Figure[]
+  data: ChangeEntry[]
+  date_note: string
+}
+
+/** How an action reads in a sentence. */
+export function actionLabel(action: string): string {
+  const plain = action.includes('.') ? action.split('.').slice(1).join(' ') : action
+  return plain.replace(/_/g, ' ')
+}
+
+/** A value as it should appear on either side of a change. */
+export function changedValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') {
+    // "Nothing was there" and "this is blank" are the same fact here, and
+    // both are different from a value the reader simply cannot see.
+    return 'not set'
+  }
+  return String(value).replace(/_/g, ' ')
+}
+
+/**
+ * What moved, in one line.
+ *
+ * The trail stores whole snapshots and the API sends the difference; this is
+ * only the wording. An action with no field difference — a mission check-in,
+ * say — returns an empty string rather than an empty bracket, so the row
+ * shows the action alone instead of a sentence that trails off.
+ */
+export function summariseFields(changed: FieldChange[]): string {
+  return changed
+    .map((change) => {
+      const name = dimensionLabel(change.field)
+      const to = changedValue(change.to)
+
+      // No left-hand side where the trail never recorded one. Writing "not
+      // set → verified" would claim the field had been empty, which the
+      // trail does not say and which is usually untrue.
+      return change.had_previous === false
+        ? `${name} → ${to}`
+        : `${name}: ${changedValue(change.from)} → ${to}`
+    })
+    .join(' · ')
+}
+
 export interface MeasureInfo {
   name: string
   label: string
