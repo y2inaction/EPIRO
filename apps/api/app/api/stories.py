@@ -153,6 +153,7 @@ async def update_story(
     """Update story content."""
     story = _get_scoped_story(db, story_id, access)
     access.require_role(story.organisation_id, CONTENT_AUTHORS)
+    before = audit.snapshot(story, "status", "version")
 
     if story.status in UNDELETABLE:
         raise HTTPException(
@@ -179,6 +180,7 @@ async def update_story(
         entity_id=story_id,
         user=access.user,
         organisation_id=organisation_id,
+        old_values=before,
         new_values={field: audit.serialise(value) for field, value in update_data.items()},
         request=request,
     )
@@ -270,6 +272,7 @@ async def approve_story(
     """
     story = _get_scoped_story(db, story_id, access)
     access.require_role(story.organisation_id, STORY_APPROVERS)
+    before = audit.snapshot(story, "status")
     _require_status(story, {StoryStatus.IN_REVIEW}, "Only a story under review can be approved")
 
     access.require_distinct_actor(story.created_by)
@@ -301,6 +304,7 @@ async def approve_story(
         user=access.user,
         organisation_id=story.organisation_id,
         evidence_id=story.evidence_id,
+        old_values=before,
         new_values={"status": StoryStatus.APPROVED.value},
         request=request,
     )
@@ -390,6 +394,7 @@ async def publish_story(
     """Publish an approved story."""
     story = _get_scoped_story(db, story_id, access)
     access.require_role(story.organisation_id, PUBLISHERS)
+    before = audit.snapshot(story, "status")
     _require_status(
         story,
         {StoryStatus.APPROVED},
@@ -420,6 +425,7 @@ async def publish_story(
         user=access.user,
         organisation_id=story.organisation_id,
         evidence_id=story.evidence_id,
+        old_values=before,
         new_values={
             "status": StoryStatus.PUBLISHED.value,
             "approved_by": audit.serialise(approved_by),
@@ -473,6 +479,7 @@ async def feature_story(
     """Mark a published story as featured."""
     story = _get_scoped_story(db, story_id, access)
     access.require_role(story.organisation_id, PUBLISHERS)
+    before = audit.snapshot(story, "featured")
     _require_status(story, {StoryStatus.PUBLISHED}, "Only a published story can be featured")
 
     story.featured = True
@@ -487,6 +494,7 @@ async def feature_story(
         entity_id=story_id,
         user=access.user,
         organisation_id=story.organisation_id,
+        old_values=before,
         new_values={"featured": True},
         request=request,
     )

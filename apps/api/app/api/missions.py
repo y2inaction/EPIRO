@@ -254,6 +254,7 @@ async def update_mission(
     """
     mission = _scoped_mission(db, mission_id, access)
     access.require_role(mission.organisation_id, FIELD_COORDINATORS)
+    before = audit.snapshot(mission, "status")
     missions.require_status(
         mission,
         EDITABLE,
@@ -278,6 +279,7 @@ async def update_mission(
         entity_id=mission_id,
         user=access.user,
         organisation_id=mission.organisation_id,
+        old_values=before,
         new_values={field: audit.serialise(value) for field, value in update.items()},
         request=request,
     )
@@ -298,6 +300,7 @@ async def approve_mission(
     """
     mission = _scoped_mission(db, mission_id, access)
     access.require_role(mission.organisation_id, FIELD_COORDINATORS)
+    before = audit.snapshot(mission, "status")
     missions.require_status(
         mission, {MissionStatus.PLANNED}, "Only a planned mission can be approved"
     )
@@ -320,6 +323,7 @@ async def approve_mission(
         entity_id=mission_id,
         user=access.user,
         organisation_id=mission.organisation_id,
+        old_values=before,
         new_values={"status": mission.status.value},
         request=request,
     )
@@ -340,6 +344,7 @@ async def start_mission(
     """
     mission = _scoped_mission(db, mission_id, access)
     access.require_role(mission.organisation_id, FIELD_TEAM)
+    before = audit.snapshot(mission, "status")
     missions.require_status(
         mission,
         {MissionStatus.APPROVED},
@@ -360,6 +365,7 @@ async def start_mission(
         entity_id=mission_id,
         user=access.user,
         organisation_id=mission.organisation_id,
+        old_values=before,
         new_values={"status": mission.status.value},
         request=request,
     )
@@ -437,6 +443,7 @@ async def complete_mission(
     """Record that the team is back, and what the mission found."""
     mission = _scoped_mission(db, mission_id, access)
     access.require_role(mission.organisation_id, FIELD_TEAM)
+    before = audit.snapshot(mission, "status")
     missions.require_status(
         mission,
         {MissionStatus.IN_PROGRESS},
@@ -458,6 +465,7 @@ async def complete_mission(
         entity_id=mission_id,
         user=access.user,
         organisation_id=mission.organisation_id,
+        old_values=before,
         new_values={"status": mission.status.value},
         request=request,
     )

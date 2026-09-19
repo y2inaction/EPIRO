@@ -53,6 +53,20 @@ export default async function DecisionsPage({
         description="What was decided because of what the organisation knows — who owns it, and how it ended."
       />
 
+      <p className="mb-6">
+        <Link
+          href="/workspace/actions/new"
+          className={
+            'rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition ' +
+            'hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 ' +
+            'focus-visible:outline-offset-2 focus-visible:outline-sky-600 ' +
+            'dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
+          }
+        >
+          Raise a decision
+        </Link>
+      </p>
+
       <nav aria-label="View" className="mb-8 flex flex-wrap gap-2">
         {VIEWS.map((view) => {
           const here =

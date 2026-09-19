@@ -1,9 +1,17 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 
 import type { DecisionAction } from '@/lib/decisions'
-import { acceptAction, completeAction, dropAction, startAction } from '@/lib/workspace'
+import { parseOrigin } from '@/lib/decisions'
+import {
+  acceptAction,
+  completeAction,
+  dropAction,
+  raiseAction,
+  startAction,
+} from '@/lib/workspace'
 import type { TransitionState } from '@/app/workspace/content-actions'
 
 const DONE: Record<DecisionAction, string> = {
@@ -50,4 +58,46 @@ export async function applyDecision(
   revalidatePath(`/workspace/actions/${id}`)
   revalidatePath('/workspace/actions')
   return { done: DONE[move] }
+}
+
+
+/**
+ * Raise an action against something the organisation already holds.
+ *
+ * The origin is required and is checked again on the server, which also
+ * confirms the cited record exists inside the caller's organisations. This
+ * check only spares a round trip.
+ */
+export async function raiseDecision(
+  _state: TransitionState,
+  formData: FormData,
+): Promise<TransitionState> {
+  const origin = parseOrigin(String(formData.get('origin') ?? ''))
+  const title = String(formData.get('title') ?? '').trim()
+  const rationale = String(formData.get('rationale') ?? '').trim()
+  const dueDate = String(formData.get('due_date') ?? '').trim()
+
+  if (!origin) {
+    return { error: 'Choose what prompted this. An action nobody can trace back to a finding is a wish list.' }
+  }
+  if (!title || !rationale) {
+    return { error: 'A title and the reasoning are both needed. The reasoning is the part nobody can reconstruct later.' }
+  }
+
+  const result = await raiseAction({
+    organisation_id: String(formData.get('organisation_id') ?? ''),
+    title,
+    rationale,
+    origin_type: origin.originType,
+    origin_id: origin.originId,
+    owner_id: String(formData.get('owner_id') ?? ''),
+    due_date: dueDate || null,
+  })
+
+  if (!result.ok) {
+    return { error: result.message }
+  }
+
+  revalidatePath('/workspace/actions')
+  redirect(`/workspace/actions/${result.value.id}`)
 }

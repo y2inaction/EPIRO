@@ -213,6 +213,7 @@ async def triage_question(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Question not found")
 
     access.require_role(triage.organisation_id, QUESTION_RESPONDERS)
+    before = audit.snapshot(question, "status", "organisation_id")
 
     if question.status is not QuestionStatus.NEW:
         raise HTTPException(
@@ -244,6 +245,7 @@ async def triage_question(
         entity_id=question_id,
         user=access.user,
         organisation_id=question.organisation_id,
+        old_values=before,
         new_values={
             "status": QuestionStatus.TRIAGED.value,
             "organisation_id": audit.serialise(triage.organisation_id),
@@ -266,6 +268,7 @@ async def update_question(
     question = _get_scoped_question(db, question_id, access)
     organisation_id = _require_assigned_organisation(question)
     access.require_role(organisation_id, QUESTION_RESPONDERS)
+    before = audit.snapshot(question, "status", "category")
 
     update_data = question_update.model_dump(exclude_unset=True)
 
@@ -283,6 +286,7 @@ async def update_question(
         entity_id=question_id,
         user=access.user,
         organisation_id=organisation_id,
+        old_values=before,
         new_values={field: audit.serialise(value) for field, value in update_data.items()},
         request=request,
     )
@@ -301,6 +305,7 @@ async def respond_to_question(
     question = _get_scoped_question(db, question_id, access)
     organisation_id = _require_assigned_organisation(question)
     access.require_role(organisation_id, QUESTION_RESPONDERS)
+    before = audit.snapshot(question, "status")
     _require_status(
         question,
         RESPONDABLE,
@@ -323,6 +328,7 @@ async def respond_to_question(
         entity_id=question_id,
         user=access.user,
         organisation_id=organisation_id,
+        old_values=before,
         new_values={"status": QuestionStatus.RESPONSE_DRAFTED.value},
         request=request,
     )
@@ -341,6 +347,7 @@ async def approve_question_response(
     question = _get_scoped_question(db, question_id, access)
     organisation_id = _require_assigned_organisation(question)
     access.require_role(organisation_id, APPROVERS)
+    before = audit.snapshot(question, "status")
 
     if not question.response:
         raise HTTPException(
@@ -379,6 +386,7 @@ async def approve_question_response(
         entity_id=question_id,
         user=access.user,
         organisation_id=organisation_id,
+        old_values=before,
         new_values={"status": QuestionStatus.APPROVED.value},
         request=request,
     )
@@ -473,6 +481,7 @@ async def publish_question_response(
     question = _get_scoped_question(db, question_id, access)
     organisation_id = _require_assigned_organisation(question)
     access.require_role(organisation_id, PUBLISHERS)
+    before = audit.snapshot(question, "status", "is_published")
     _require_status(
         question,
         {QuestionStatus.APPROVED},
@@ -497,6 +506,7 @@ async def publish_question_response(
         entity_id=question_id,
         user=access.user,
         organisation_id=organisation_id,
+        old_values=before,
         new_values={
             "status": QuestionStatus.PUBLISHED.value,
             "approved_by": audit.serialise(approved_by),

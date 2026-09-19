@@ -506,3 +506,22 @@ export function dropAction(id: string, outcome: string): Promise<Result<ActionRe
     body: JSON.stringify({ outcome }),
   })
 }
+
+
+export interface RaiseAction {
+  organisation_id: string
+  title: string
+  rationale: string
+  origin_type: string
+  origin_id: string
+  owner_id: string
+  due_date?: string | null
+  scenario_id?: string | null
+}
+
+export function raiseAction(payload: RaiseAction): Promise<Result<ActionRecord>> {
+  return request<ActionRecord>('/actions/', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}

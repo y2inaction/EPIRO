@@ -80,3 +80,44 @@ export function waitingFor(status: string, overdue: boolean): string {
   }
   return 'Open.'
 }
+
+
+/**
+ * What an action can be raised from, and where to find the candidates.
+ *
+ * The intelligence drill-down already lists every record of a measure,
+ * scoped and filtered exactly as the dashboard is, so the picker reuses it
+ * rather than adding a second way to enumerate the same rows.
+ *
+ * `drill_finding` is missing on purpose: findings are not an intelligence
+ * measure, so there is no list to draw from here. An action can still be
+ * raised against one through the API.
+ */
+export const ORIGIN_SOURCES = [
+  { originType: 'integrity_signal', measure: 'integrity_signals', label: 'Integrity signal' },
+  { originType: 'scenario', measure: 'scenarios', label: 'Readiness scenario' },
+  { originType: 'evidence', measure: 'evidence', label: 'Evidence record' },
+] as const
+
+/**
+ * Split the picker's value back into a type and an id.
+ *
+ * One select rather than two linked ones, so the form needs no scripting.
+ * Returns null for anything malformed rather than guessing — an action with
+ * a mis-parsed origin would cite the wrong record, which is worse than a
+ * refusal.
+ */
+export function parseOrigin(value: string): { originType: string; originId: string } | null {
+  const split = value.indexOf(':')
+  if (split <= 0) {
+    return null
+  }
+
+  const originType = value.slice(0, split)
+  const originId = value.slice(split + 1)
+
+  if (!originId || !ORIGIN_SOURCES.some((s) => s.originType === originType)) {
+    return null
+  }
+  return { originType, originId }
+}

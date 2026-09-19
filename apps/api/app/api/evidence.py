@@ -293,11 +293,13 @@ async def verify_evidence(
     access.require_role(evidence.organisation_id, EVIDENCE_VERIFIERS)
     organisation_id = evidence.organisation_id
 
+    before = audit.snapshot(evidence, "verification_status", "status")
     verified = evidence_repo.mark_verified(evidence_id, access.user.id, notes)
     audit.record(
         db,
         action=audit.VERIFIED,
         entity_type="evidence",
+        old_values=before,
         entity_id=evidence_id,
         user=access.user,
         organisation_id=organisation_id,
@@ -354,6 +356,7 @@ async def approve_evidence(
         workflow.require_stage_role(state.stage, access.role_in(organisation_id))
     else:
         access.require_role(organisation_id, APPROVERS)
+    before = audit.snapshot(evidence, "status", "approval_status")
 
     # Whoever clears a stage must differ from whoever cleared the one before,
     # and from the verifier: the point is that more than one person looked.
@@ -388,6 +391,7 @@ async def approve_evidence(
             user=access.user,
             organisation_id=organisation_id,
             evidence_id=evidence_id,
+            old_values=before,
             new_values={
                 "stage": state.stage.name if state.stage else None,
                 "remaining": state.remaining_after_this,
@@ -513,6 +517,7 @@ async def publish_evidence(
     evidence_repo = EvidenceRepository(db)
     evidence = _get_scoped_evidence(evidence_repo, evidence_id, access)
     access.require_role(evidence.organisation_id, PUBLISHERS)
+    before = audit.snapshot(evidence, "status")
 
     if evidence.approval_status != "approved":
         raise HTTPException(
@@ -532,6 +537,7 @@ async def publish_evidence(
         user=access.user,
         organisation_id=organisation_id,
         evidence_id=evidence_id,
+        old_values=before,
         new_values={"status": "published", "approved_by": audit.serialise(approved_by)},
         request=request,
     )

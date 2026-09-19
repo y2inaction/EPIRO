@@ -44,3 +44,46 @@ describe('waitingFor', () => {
     }
   })
 })
+
+import { ORIGIN_SOURCES, parseOrigin } from '@/lib/decisions'
+
+describe('parseOrigin', () => {
+  it('splits the picker value into the type and the id', () => {
+    expect(parseOrigin('integrity_signal:abc-123')).toEqual({
+      originType: 'integrity_signal',
+      originId: 'abc-123',
+    })
+  })
+
+  it('keeps an id that contains a colon intact', () => {
+    // Split on the first separator only. Splitting on every colon would
+    // truncate the id and cite a record that does not exist.
+    expect(parseOrigin('evidence:a:b')).toEqual({ originType: 'evidence', originId: 'a:b' })
+  })
+
+  it('refuses a type it does not offer, rather than passing it through', () => {
+    expect(parseOrigin('voter_profile:abc')).toBeNull()
+  })
+
+  it('refuses anything malformed rather than guessing', () => {
+    // An action with a mis-parsed origin cites the wrong record, which is
+    // worse than a refusal.
+    expect(parseOrigin('')).toBeNull()
+    expect(parseOrigin('evidence')).toBeNull()
+    expect(parseOrigin('evidence:')).toBeNull()
+    expect(parseOrigin(':abc')).toBeNull()
+  })
+})
+
+describe('ORIGIN_SOURCES', () => {
+  it('offers only origins the server accepts', () => {
+    // Mirrors ORIGIN_MODELS in app/services/actions.py. drill_finding is
+    // absent on purpose: it is not an intelligence measure, so there is no
+    // list to draw candidates from.
+    expect(ORIGIN_SOURCES.map((s) => s.originType)).toEqual([
+      'integrity_signal',
+      'scenario',
+      'evidence',
+    ])
+  })
+})

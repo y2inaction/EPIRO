@@ -59,7 +59,25 @@ decision and its reasoning. Deleting the row would keep neither, and the
 reason for not acting is usually the part worth having when somebody asks why
 nothing happened.
 
-## 4. The lifecycle, and why it does not reverse
+## 4. Closing is not self-certification
+
+The owner does the work; **somebody else** records it as done or dropped.
+"I did the thing I said I would do and I say I did it" is exactly the
+self-certification the rest of the platform refuses — a verifier cannot
+approve their own verification, an approver cannot publish what they
+approved, a drill finding cannot be resolved by whoever raised it. An action
+register exempt from that floor would be the one place this platform takes
+somebody's word for it.
+
+The floor is on **closing only**. The owner may accept and start their own
+action: requiring a second person to begin work would make the register
+unusable without buying any of the assurance that matters.
+
+The cost is real and worth stating: a body with one person on the register
+cannot close anything. That is the same cost every other workflow here
+already charges, and it is charged for the same reason.
+
+## 5. The lifecycle, and why it does not reverse
 
 ```
 proposed → accepted → in_progress → done
@@ -71,7 +89,7 @@ to be revisited is a **new** decision, with its own reasoning and its own
 trail; editing the old one over the top would lose the fact that it happened
 twice.
 
-## 5. Overdue is derived, never stored
+## 6. Overdue is derived, never stored
 
 A stored flag is wrong from the moment the clock passes it until something
 updates it, and the thing least likely to happen to a neglected action is an
@@ -79,7 +97,7 @@ update. `overdue` is computed on every read from the due date and the status,
 and a finished action is not chased past its date. A test asserts there is no
 `overdue` column to fall out of step.
 
-## 6. What is deliberately absent
+## 7. What is deliberately absent
 
 **No computed priority.** Ranking what matters is a judgement an accountable
 person makes. A generated score would launder that judgement into arithmetic
@@ -92,7 +110,7 @@ report on staff, and spec section 4's prohibition on profiling is not only
 about citizens — the same line is held for drill findings, mission check-ins
 and the change feed.
 
-## 7. It is part of the intelligence layer
+## 8. It is part of the intelligence layer
 
 Registering `actions` as a measure means the register is counted, filtered,
 broken down and read in the change feed by the same mechanism as everything
@@ -104,17 +122,13 @@ else — no separate reporting path to drift out of step:
 - **Changes** reads the decision trail: what was decided, when, and by whom.
 - The **filters** apply: organisation, area, theme, status, date range.
 
-## 8. What is not built
+## 9. What is not built
 
-- **No way to raise an action in the interface.** The register and the
-  decision screens exist — `/workspace/actions` with its views, and a screen
-  per action offering exactly the moves the lifecycle allows — but an action
-  is still raised through the API. The form needs an origin picker, which
-  means searching signals, findings, scenarios and evidence from one control.
+- **A drill finding cannot be picked as an origin in the interface.** The
+  form's picker draws its candidates from the intelligence drill-down, and
+  findings are not a measure, so there is no list to offer. The API accepts
+  one.
 - **No notification when an action falls overdue.** The register can say what
   is late; nothing tells anybody.
 - **No dependency between actions**, and no grouping into a plan.
-- **No separation of duties on closing.** The owner records their own outcome.
-  Whether completing an action should need a second person is a real question
-  and was not decided here; the evidence and story workflows do require it,
-  and this deliberately does not claim to.
+

@@ -23,6 +23,18 @@ months.
 keeps the decision and the reasoning; deleting the row would keep neither, and
 the reason for not acting is usually the part worth having.
 
+**Closing is not self-certification.** The owner does the work; somebody else
+records it as done or dropped. "I did the thing I said I would do and I say I
+did it" is exactly the self-certification the rest of the platform refuses —
+a drill finding cannot be resolved by whoever raised it, a verifier cannot
+approve their own verification, an approver cannot publish what they
+approved. An action register exempt from that floor would be the one place
+the platform takes somebody's word for it.
+
+The cost is real and worth stating: a body with one person on the register
+cannot close anything. That is the same cost every other workflow here
+already charges, and it is charged for the same reason.
+
 There is deliberately no computed priority. Ranking what matters is a
 judgement an accountable person makes, and a number generated for it would
 launder that judgement into arithmetic nobody can argue with.

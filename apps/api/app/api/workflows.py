@@ -159,6 +159,7 @@ async def deactivate_workflow(
     """
     definition = _get_scoped_definition(db, definition_id, access)
     access.require_role(definition.organisation_id, ORG_ADMINS)
+    before = audit.snapshot(definition, "is_active")
 
     definition.is_active = False
     definition.updated_by = access.user.id
@@ -171,6 +172,7 @@ async def deactivate_workflow(
         entity_id=definition_id,
         user=access.user,
         organisation_id=definition.organisation_id,
+        old_values=before,
         new_values={"is_active": False},
         request=request,
     )

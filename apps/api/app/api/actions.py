@@ -16,6 +16,10 @@ part; what happened is.
 
 **Deciding not to act is recorded, not deleted.** ``dropped`` keeps the
 decision and its reasoning, which is usually the part worth having.
+
+**Closing is done by somebody other than the owner.** The owner does the work
+and somebody else records that it happened, because "I did it and I say I did
+it" is the self-certification every other workflow here refuses.
 """
 
 import uuid
@@ -221,6 +225,12 @@ def _move(
     """Move an action along its lifecycle, recording what changed."""
     access.require_role(action.organisation_id, ACTION_OWNERS)
     rules.require_transition(action, to)
+
+    if to in rules.CLOSED:
+        # The owner did the work; somebody else records that it happened. A
+        # register where the owner certifies their own completion is the one
+        # place this platform would be taking somebody's word for it.
+        access.require_distinct_actor(action.owner_id)
 
     was = action.status.value
     action.status = to

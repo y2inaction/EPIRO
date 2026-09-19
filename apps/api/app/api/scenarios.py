@@ -395,6 +395,7 @@ async def complete_drill(
     drill = _scoped_drill(db, drill_id, access)
     scenario = drill.scenario
     access.require_role(scenario.organisation_id, DRILL_CONDUCTORS)
+    before = audit.snapshot(drill, "status")
 
     if drill.status is not DrillStatus.SCHEDULED:
         raise HTTPException(
@@ -435,6 +436,7 @@ async def complete_drill(
         entity_id=drill_id,
         user=access.user,
         organisation_id=scenario.organisation_id,
+        old_values=before,
         new_values={
             "scenario_id": audit.serialise(scenario.id),
             "findings": len(payload.findings),
@@ -459,6 +461,7 @@ async def cancel_drill(
     """
     drill = _scoped_drill(db, drill_id, access)
     access.require_role(drill.scenario.organisation_id, READINESS_MANAGERS)
+    before = audit.snapshot(drill, "status")
 
     if drill.status is not DrillStatus.SCHEDULED:
         raise HTTPException(
@@ -480,6 +483,7 @@ async def cancel_drill(
         entity_id=drill_id,
         user=access.user,
         organisation_id=drill.scenario.organisation_id,
+        old_values=before,
         new_values={"reason": payload.reason},
         request=request,
     )
@@ -510,6 +514,7 @@ async def resolve_finding(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finding not found")
 
     access.require_role(scenario.organisation_id, DRILL_CONDUCTORS)
+    before = audit.snapshot(finding, "resolved_at", "resolved_by")
 
     if finding.resolved_at is not None:
         raise HTTPException(
@@ -534,6 +539,7 @@ async def resolve_finding(
         entity_id=finding_id,
         user=access.user,
         organisation_id=scenario.organisation_id,
+        old_values=before,
         new_values={
             "severity": finding.severity.value,
             "resolution": payload.resolution,

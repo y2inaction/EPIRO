@@ -900,6 +900,59 @@ class TestChanges:
             }
         ]
 
+    def test_a_real_transition_now_records_what_it_moved_from(
+        self, client: TestClient, db: Session, analyst: User, organisation: Organisation
+    ):
+        """The gap this closed: the trail used to record only what a record became.
+
+        Driven through the API rather than by writing an audit row by hand,
+        because the point is that the endpoint captures the prior state.
+        """
+        verifier = member(db, organisation, Role.VERIFIER)
+        record = make_evidence(db, organisation)
+
+        client.post(
+            f"/api/v1/evidence/{record.id}/verify",
+            json={"notes": "Checked against the works register."},
+            headers=auth_header(verifier),
+        )
+
+        feed = client.get(
+            f"{BASE}/changes", params={"measure": "evidence"}, headers=auth_header(analyst)
+        ).json()
+        moved = {c["field"]: c for c in feed["data"][0]["changed"]}
+
+        assert moved["verification_status"]["had_previous"] is True
+        assert moved["verification_status"]["from"] == "unverified"
+        assert moved["verification_status"]["to"] == "verified"
+
+    def test_a_captured_field_the_change_did_not_touch_is_not_reported_as_cleared(
+        self, client: TestClient, db: Session, analyst: User, organisation: Organisation
+    ):
+        """An endpoint may snapshot more than it changes.
+
+        Reporting a field present only in the prior snapshot would say
+        "status: draft → not set" about a verification that never touched the
+        status — a worse lie than the one the snapshot was added to fix.
+        """
+        record = make_evidence(db, organisation)
+        audit.record(
+            db,
+            action=audit.VERIFIED,
+            entity_type="evidence",
+            entity_id=record.id,
+            user=analyst,
+            organisation_id=organisation.id,
+            old_values={"status": "draft", "verification_status": "unverified"},
+            new_values={"verification_status": "verified"},
+        )
+
+        feed = client.get(
+            f"{BASE}/changes", params={"measure": "evidence"}, headers=auth_header(analyst)
+        ).json()
+
+        assert [c["field"] for c in feed["data"][0]["changed"]] == ["verification_status"]
+
     def test_a_previous_value_that_really_was_empty_says_so(
         self, client: TestClient, db: Session, analyst: User, organisation: Organisation
     ):

@@ -63,6 +63,21 @@ def serialise(value: Any) -> Any:
     return value
 
 
+def snapshot(record: Any, *fields: str) -> Dict[str, Any]:
+    """The current value of the named fields, ready for ``old_values``.
+
+    Taken **before** the change, which is the whole point. The trail used to
+    record only what a record became, so a feed reading it could say a record
+    was verified but not what its verification state had been — and reporting
+    the absent key as null made it claim the field was previously unset, an
+    assertion the trail never made.
+
+    A field the record does not carry is left out rather than written as
+    null, so "not recorded" stays distinguishable from "was empty".
+    """
+    return {field: serialise(getattr(record, field)) for field in fields if hasattr(record, field)}
+
+
 def _client_ip(request: Optional[Request]) -> Optional[str]:
     """Best-effort client address."""
     if request is None or request.client is None:

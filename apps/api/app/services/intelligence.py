@@ -899,6 +899,11 @@ def fields_changed(entry: Any) -> List[Dict[str, Any]]:
     old = entry.old_values or {}
     new = entry.new_values or {}
 
+    # Driven by what the change *asserts* it changed. A field present only in
+    # the prior snapshot is context the endpoint captured, not something that
+    # moved: reporting it would say "status: draft → not set" about a
+    # verification that never touched the status, which is a worse lie than
+    # the one this method was added to fix.
     return [
         {
             "field": key,
@@ -906,6 +911,6 @@ def fields_changed(entry: Any) -> List[Dict[str, Any]]:
             "to": new.get(key),
             "had_previous": key in old,
         }
-        for key in sorted(set(old) | set(new))
+        for key in sorted(new)
         if not (key in old and old.get(key) == new.get(key))
     ]

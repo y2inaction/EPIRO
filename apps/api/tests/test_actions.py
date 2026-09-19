@@ -39,6 +39,16 @@ def owner(db: Session, organisation: Organisation) -> User:
     return member(db, organisation, Role.EXECUTIVE)
 
 
+@pytest.fixture
+def closer(db: Session, organisation: Organisation) -> User:
+    """Somebody other than the owner, who records that it happened.
+
+    Closing is not self-certification: the owner does the work and a second
+    person records the outcome, as everywhere else on this platform.
+    """
+    return member(db, organisation, Role.APPROVER)
+
+
 def signal(db: Session, organisation: Organisation) -> IntegritySignal:
     """A claim already logged, which an action can be raised against."""
     record = IntegritySignal(
@@ -148,14 +158,14 @@ class TestAnActionMustCiteWhatPromptedIt:
 
 class TestClosingRequiresAnOutcome:
     def test_completing_without_saying_what_happened_is_refused(
-        self, client: TestClient, db: Session, owner: User, organisation: Organisation
+        self, client: TestClient, db: Session, owner: User, closer: User, organisation: Organisation
     ):
         action_id = raise_action(client, owner, organisation, signal(db, organisation)).json()["id"]
         client.post(f"{BASE}/{action_id}/accept", headers=auth_header(owner))
         client.post(f"{BASE}/{action_id}/start", headers=auth_header(owner))
 
         response = client.post(
-            f"{BASE}/{action_id}/complete", json={"outcome": "   "}, headers=auth_header(owner)
+            f"{BASE}/{action_id}/complete", json={"outcome": "   "}, headers=auth_header(closer)
         )
 
         # Whitespace passes the length check and is still not an account of
@@ -165,7 +175,7 @@ class TestClosingRequiresAnOutcome:
         assert "Write what happened" in response.json()["detail"]
 
     def test_a_completed_action_keeps_what_happened(
-        self, client: TestClient, db: Session, owner: User, organisation: Organisation
+        self, client: TestClient, db: Session, owner: User, closer: User, organisation: Organisation
     ):
         action_id = raise_action(client, owner, organisation, signal(db, organisation)).json()["id"]
         client.post(f"{BASE}/{action_id}/accept", headers=auth_header(owner))
@@ -174,7 +184,7 @@ class TestClosingRequiresAnOutcome:
         response = client.post(
             f"{BASE}/{action_id}/complete",
             json={"outcome": "Correction published in Hausa on 14 September."},
-            headers=auth_header(owner),
+            headers=auth_header(closer),
         )
 
         assert response.status_code == 200
@@ -184,7 +194,7 @@ class TestClosingRequiresAnOutcome:
         assert body["closed_at"] is not None
 
     def test_deciding_not_to_act_is_recorded_rather_than_deleted(
-        self, client: TestClient, db: Session, owner: User, organisation: Organisation
+        self, client: TestClient, db: Session, owner: User, closer: User, organisation: Organisation
     ):
         """The reason for not acting is usually the part worth having."""
         action_id = raise_action(client, owner, organisation, signal(db, organisation)).json()["id"]
@@ -192,12 +202,69 @@ class TestClosingRequiresAnOutcome:
         response = client.post(
             f"{BASE}/{action_id}/drop",
             json={"outcome": "The claim stopped circulating before a correction was needed."},
-            headers=auth_header(owner),
+            headers=auth_header(closer),
         )
 
         assert response.status_code == 200
         assert response.json()["status"] == "dropped"
         assert db.query(Action).filter(Action.id == uuid.UUID(action_id)).first() is not None
+
+
+class TestClosingIsNotSelfCertification:
+    """The owner does the work; somebody else records that it happened.
+
+    "I did the thing I said I would do and I say I did it" is exactly the
+    self-certification the rest of the platform refuses — a drill finding
+    cannot be resolved by whoever raised it, a verifier cannot approve their
+    own verification. An action register exempt from that floor would be the
+    one place the platform takes somebody's word for it.
+    """
+
+    def test_the_owner_cannot_record_their_own_action_as_done(
+        self, client: TestClient, db: Session, owner: User, organisation: Organisation
+    ):
+        action_id = raise_action(client, owner, organisation, signal(db, organisation)).json()["id"]
+        client.post(f"{BASE}/{action_id}/accept", headers=auth_header(owner))
+        client.post(f"{BASE}/{action_id}/start", headers=auth_header(owner))
+
+        response = client.post(
+            f"{BASE}/{action_id}/complete",
+            json={"outcome": "I did it."},
+            headers=auth_header(owner),
+        )
+
+        assert response.status_code == 403
+        assert "Separation of duties" in response.json()["detail"]
+
+    def test_the_owner_cannot_drop_their_own_action(
+        self, client: TestClient, db: Session, owner: User, organisation: Organisation
+    ):
+        action_id = raise_action(client, owner, organisation, signal(db, organisation)).json()["id"]
+
+        response = client.post(
+            f"{BASE}/{action_id}/drop",
+            json={"outcome": "Changed my mind."},
+            headers=auth_header(owner),
+        )
+
+        assert response.status_code == 403
+
+    def test_the_owner_may_still_accept_and_start_it(
+        self, client: TestClient, db: Session, owner: User, organisation: Organisation
+    ):
+        """The floor is on closing, not on doing the work.
+
+        Requiring a second person to start work would make the register
+        unusable without buying any of the assurance that matters.
+        """
+        action_id = raise_action(client, owner, organisation, signal(db, organisation)).json()["id"]
+
+        assert (
+            client.post(f"{BASE}/{action_id}/accept", headers=auth_header(owner)).status_code == 200
+        )
+        assert (
+            client.post(f"{BASE}/{action_id}/start", headers=auth_header(owner)).status_code == 200
+        )
 
 
 class TestTheLifecycle:
@@ -216,14 +283,14 @@ class TestTheLifecycle:
         assert "cannot go straight to done" in response.json()["detail"]
 
     def test_a_closed_action_is_not_reopened(
-        self, client: TestClient, db: Session, owner: User, organisation: Organisation
+        self, client: TestClient, db: Session, owner: User, closer: User, organisation: Organisation
     ):
         """A decision revisited is a new decision, with its own reasoning."""
         action_id = raise_action(client, owner, organisation, signal(db, organisation)).json()["id"]
         client.post(
             f"{BASE}/{action_id}/drop",
             json={"outcome": "Not needed."},
-            headers=auth_header(owner),
+            headers=auth_header(closer),
         )
 
         response = client.post(f"{BASE}/{action_id}/accept", headers=auth_header(owner))
@@ -232,11 +299,11 @@ class TestTheLifecycle:
         assert "Raise a new action" in response.json()["detail"]
 
     def test_a_closed_action_cannot_be_revised(
-        self, client: TestClient, db: Session, owner: User, organisation: Organisation
+        self, client: TestClient, db: Session, owner: User, closer: User, organisation: Organisation
     ):
         action_id = raise_action(client, owner, organisation, signal(db, organisation)).json()["id"]
         client.post(
-            f"{BASE}/{action_id}/drop", json={"outcome": "Not needed."}, headers=auth_header(owner)
+            f"{BASE}/{action_id}/drop", json={"outcome": "Not needed."}, headers=auth_header(closer)
         )
 
         response = client.patch(

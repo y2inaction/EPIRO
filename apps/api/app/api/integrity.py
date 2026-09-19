@@ -192,6 +192,7 @@ async def update_signal(
     """
     signal = _scoped_signal(db, signal_id, access)
     access.require_role(signal.organisation_id, INTEGRITY_MONITORS)
+    before = audit.snapshot(signal, "status", "finding", "version")
 
     if signal.status is IntegritySignalStatus.PUBLISHED:
         raise HTTPException(
@@ -218,6 +219,7 @@ async def update_signal(
         entity_id=signal_id,
         user=access.user,
         organisation_id=signal.organisation_id,
+        old_values=before,
         new_values={field: audit.serialise(value) for field, value in update.items()},
         request=request,
     )
@@ -240,6 +242,7 @@ async def assess_signal(
     """
     signal = _scoped_signal(db, signal_id, access)
     access.require_role(signal.organisation_id, INTEGRITY_ASSESSORS)
+    before = audit.snapshot(signal, "status", "finding")
     integrity.require_status(
         signal,
         integrity.ASSESSABLE,
@@ -274,6 +277,7 @@ async def assess_signal(
         user=access.user,
         organisation_id=signal.organisation_id,
         evidence_id=signal.evidence_id,
+        old_values=before,
         new_values={
             "status": signal.status.value,
             "finding": signal.finding.value if signal.finding else None,
@@ -298,6 +302,7 @@ async def draft_response(
     """
     signal = _scoped_signal(db, signal_id, access)
     access.require_role(signal.organisation_id, INTEGRITY_ASSESSORS)
+    before = audit.snapshot(signal, "status")
     integrity.require_status(
         signal,
         integrity.ASSESSABLE | {IntegritySignalStatus.APPROVED},
@@ -317,6 +322,7 @@ async def draft_response(
         entity_id=signal_id,
         user=access.user,
         organisation_id=signal.organisation_id,
+        old_values=before,
         new_values={"status": signal.status.value},
         request=request,
     )
@@ -339,6 +345,7 @@ async def approve_signal(
     """
     signal = _scoped_signal(db, signal_id, access)
     access.require_role(signal.organisation_id, APPROVERS)
+    before = audit.snapshot(signal, "status")
     integrity.require_status(
         signal,
         {IntegritySignalStatus.ASSESSED},
@@ -376,6 +383,7 @@ async def approve_signal(
         user=access.user,
         organisation_id=signal.organisation_id,
         evidence_id=signal.evidence_id,
+        old_values=before,
         new_values={"status": signal.status.value},
         request=request,
     )
@@ -454,6 +462,7 @@ async def publish_response(
     """
     signal = _scoped_signal(db, signal_id, access)
     access.require_role(signal.organisation_id, PUBLISHERS)
+    before = audit.snapshot(signal, "status")
     integrity.require_status(
         signal,
         {IntegritySignalStatus.APPROVED},
@@ -482,6 +491,7 @@ async def publish_response(
         user=access.user,
         organisation_id=signal.organisation_id,
         evidence_id=signal.evidence_id,
+        old_values=before,
         new_values={
             "status": signal.status.value,
             "approved_by": audit.serialise(signal.approved_by),
